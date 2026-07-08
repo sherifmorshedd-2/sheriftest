@@ -1,0 +1,26 @@
+{
+  "id": "com.petrobel.wells.app",
+  "name": "Land Wells - PETROBEL",
+  "short_name": "Wells",
+  "description": "PETROBEL Land Wells Situation - Well Data Lookup System",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070c11",
+  "theme_color": "#22d3ee",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
