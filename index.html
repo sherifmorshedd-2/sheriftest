@@ -1631,8 +1631,9 @@ pre{
 .anl-sum-val.loss{color:var(--red);}
 .anl-sum-val.gain{color:var(--green);}
 .anl-sum-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:3px;}
-.anl-subtabs{display:flex;gap:6px;margin-bottom:10px;}
-.anl-subtab{flex:1;padding:8px 0;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;}
+.anl-subtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.anl-woempty{font-size:12px;color:var(--muted);padding:8px 10px;}
+.anl-subtab{flex:1 1 40%;padding:8px 4px;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;}
 .anl-subtab.active{color:var(--accent);border-color:var(--accent);}
 .anl-row{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;}
 .anl-row-top{display:flex;justify-content:space-between;align-items:center;gap:8px;}
@@ -1649,6 +1650,10 @@ pre{
 .anl-chip.pump-down{color:var(--red);border-color:rgba(248,113,113,.4);}
 .anl-chip.pump-up{color:var(--green);border-color:rgba(16,185,129,.4);}
 .anl-chip.pump-type{color:#c084fc;border-color:rgba(192,132,252,.4);}
+.anl-chip.wo-restart{color:var(--green);border-color:rgba(16,185,129,.5);background:rgba(16,185,129,.12);font-weight:700;}
+.anl-chip.wo-stop{color:var(--red);border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.12);font-weight:700;}
+.anl-wo-btn{width:100%;padding:9px 12px;margin-bottom:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+.anl-wo-btn.active{background:rgba(34,211,238,.14);border-color:var(--accent);color:var(--accent);}
 .anl-chip.primary{background:rgba(248,113,113,.14);font-weight:700;}
 .anl-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:none;}
 .anl-detail.open{display:block;}
@@ -7413,6 +7418,7 @@ function initMorningReport() {
   let   _anlFilter = '';
   let   _anlMin    = 5;          // loss/gain magnitude lower bound (m³/d)
   let   _anlMax    = Infinity;   // loss/gain magnitude upper bound (m³/d)
+  let   _anlWoOnly = false;      // when true, show only W.O./Rig status-change wells
 
   function _snapId(date){ return String(date||'').replace(/[^0-9A-Za-z_-]/g,'_'); }
   function n(v){ const x=(v===''||v==null)?NaN:parseFloat(v); return isNaN(x)?0:x; }
@@ -7464,6 +7470,16 @@ function initMorningReport() {
     return {changed:true,dir:'type',label:'Pump changed ('+from+')'};
   }
 
+  // ── Status helper: classify a well into one state (mutually exclusive) ──
+  //  'prod' wins first, so a producing well is never treated as W.O./Rig even
+  //  if its shutdown-reason text still mentions rig/work-over.
+  function woCategory(status,shut){
+    const s=(status||'').toLowerCase();
+    if(/producer/.test(s)) return 'prod';
+    const t=s+' '+(shut||'').toLowerCase();
+    if(t.indexOf('w.o')>=0||t.indexOf('work over')>=0||t.indexOf('workover')>=0||t.indexOf('rig')>=0) return 'wo';
+    return 'other';
+  }
   // ── Core comparison: baseline vs current slim-well arrays ──
   function compute(baseArr,currArr){
     const bm={},cm={};
@@ -7492,7 +7508,12 @@ function initMorningReport() {
       else if(pump.dir==='up') chips.push({cls:'pump-up',text:pump.label});
       else if(pump.dir==='type') chips.push({cls:'pump-type',text:pump.label});
       const bProd=/producer/i.test(b.status), cProd=/producer/i.test(c.status);
-      if(bProd&&!cProd) chips.push({cls:'pump-down',text:'Now '+(c.status||'off')});
+      const bCat=woCategory(b.status,b.shut), cCat=woCategory(c.status,c.shut);
+      const woRestart=(bCat==='wo'&&cCat==='prod');   // was down for W.O./Rig, now producing again
+      const woStop=(bCat==='prod'&&cCat==='wo');       // was producing, now down for W.O./Rig
+      if(woRestart) chips.push({cls:'wo-restart',text:'Restarted after W.O.'});
+      else if(woStop) chips.push({cls:'wo-stop',text:'Stopped for '+(c.status||'W.O.')});
+      else if(bProd&&!cProd) chips.push({cls:'pump-down',text:'Now '+(c.status||'off')});
       // Primary cause (only meaningful for a significant loss or gain)
       let primary='';
       if(Math.abs(netLoss)>=ANL_MIN){
@@ -7505,6 +7526,7 @@ function initMorningReport() {
         bNet:bNet,cNet:cNet,netLoss:netLoss,bRate:bRate,cRate:cRate,rateDelta:rateDelta,
         bWc:bWc,cWc:cWc,wcDelta:wcDelta,bPump:b.pump,cPump:c.pump,pump:pump,
         lossRate:lossRate,lossWc:lossWc,primary:primary,chips:chips,
+        woRestart:woRestart,woStop:woStop,
         manifold:c.manifold,battery:c.battery,substation:c.substation,
         bStg:b.stg,cStg:c.stg,hz:c.hz,motorHp:c.motorHp});
     }
@@ -7516,7 +7538,7 @@ function initMorningReport() {
       rows.push({well:b.well,type:b.type,status:b.status,bStatus:b.status,
         bNet:bNet,cNet:0,netLoss:bNet,bRate:n(b.actRate),cRate:0,rateDelta:-n(b.actRate),
         bWc:n(b.actWc),cWc:0,wcDelta:0,bPump:b.pump,cPump:'',pump:{changed:false,dir:'none',label:''},
-        lossRate:bNet,lossWc:0,primary:'missing',missing:true,
+        lossRate:bNet,lossWc:0,primary:'missing',missing:true,woRestart:false,woStop:false,
         chips:[{cls:'pump-down',text:'Missing in current snapshot'}],
         manifold:b.manifold,battery:b.battery,substation:b.substation,
         bStg:b.stg,cStg:'',hz:'',motorHp:''});
@@ -7588,10 +7610,12 @@ function initMorningReport() {
     const wrap=document.getElementById('anlListWrap'); if(!wrap) return;
     const rows=_anlLast||[];
     if(_anlView==='pumps'){ wrap.innerHTML=pumpsHTML(rows); return; }
+    if(_anlView==='wobal'){ wrap.innerHTML=woBalanceHTML(rows); return; }
     let list;
     const inSize=function(mag){ return mag>=_anlMin && mag<=_anlMax; };
     if(_anlView==='gains'){ list=rows.filter(r=>r.netLoss<0 && inSize(-r.netLoss)).slice().sort((a,b)=>a.netLoss-b.netLoss); }
     else { list=rows.filter(r=>r.netLoss>0 && inSize(r.netLoss)); }
+    if(_anlWoOnly) list=list.filter(r=> (_anlView==='gains')?r.woRestart:r.woStop );
     if(_anlFilter) list=list.filter(r=>r.well.toLowerCase().indexOf(_anlFilter)>=0);
     const cntEl=document.getElementById('anlFltCount'); if(cntEl) cntEl.textContent=list.length+' well'+(list.length===1?'':'s');
     if(!list.length){ const rng=(_anlMax===Infinity?(_anlMin+'+'):(_anlMin+'–'+_anlMax)); wrap.innerHTML='<div class="empty-state"><div class="big">✅</div><p>No '+(_anlView==='gains'?'gains':'losses')+' in '+rng+' m³/d</p></div>'; return; }
@@ -7613,6 +7637,34 @@ function initMorningReport() {
       '<span class="anl-flt-lbl anl-flt-count" id="anlFltCount"></span>'+
     '</div>';
   }
+  function woBalanceHTML(rows){
+    const stopped=rows.filter(r=>r.woStop).slice().sort((a,b)=>b.netLoss-a.netLoss);
+    const restarted=rows.filter(r=>r.woRestart).slice().sort((a,b)=>a.netLoss-b.netLoss);
+    if(!stopped.length&&!restarted.length) return '<div class="empty-state"><div class="big">🔧</div><p>No wells changed to/from Waiting W.O. or Rig On between these two dates</p></div>';
+    const netLost=stopped.reduce((s,r)=>s+(r.bNet-r.cNet),0);
+    const grossLost=stopped.reduce((s,r)=>s+(r.bRate-r.cRate),0);
+    const netGained=restarted.reduce((s,r)=>s+(r.cNet-r.bNet),0);
+    const grossGained=restarted.reduce((s,r)=>s+(r.cRate-r.bRate),0);
+    const netBal=netGained-netLost, grossBal=grossGained-grossLost;
+    const sec=function(title,arr){ return arr.length?('<div class="anl-sec-title">'+title+' ('+arr.length+')</div>'+arr.map((r,i)=>rowHTML(r,i)).join('')):('<div class="anl-sec-title">'+title+' (0)</div><div class="anl-woempty">None in this comparison</div>'); };
+    const card=function(lbl,val,cls){ return '<div class="anl-sum-card"><div class="anl-sum-val '+cls+'">'+val+'</div><div class="anl-sum-lbl">'+lbl+'</div></div>'; };
+    const foot='<div class="anl-sec-title">📊 Work-Over balance (all shut / restart wells)</div>'+
+      '<div class="anl-summary">'+
+        card('Lost to shut-in (net)','-'+fmt(netLost,1)+' m³/d','loss')+
+        card('Gained from restart (net)','+'+fmt(netGained,1)+' m³/d','gain')+
+        card('Net oil balance',(netBal>=0?'+':'-')+fmt(Math.abs(netBal),1)+' m³/d',netBal>=0?'gain':'loss')+
+        card('Gross lost','-'+fmt(grossLost,0)+' m³/d','loss')+
+        card('Gross gained','+'+fmt(grossGained,0)+' m³/d','gain')+
+        card('Net gross balance',(grossBal>=0?'+':'-')+fmt(Math.abs(grossBal),0)+' m³/d',grossBal>=0?'gain':'loss')+
+      '</div>';
+    return sec('🔻 Lost to W.O. / Rig On',stopped)+sec('🔼 Restarted after W.O. / Rig On',restarted)+foot;
+  }
+  function woFilterHTML(count){
+    if(!count) return '';
+    const stop=(_anlView==='losses');
+    const lbl=stop?'🔧 Stopped for W.O./Rig':'🔧 Restarted after W.O.';
+    return '<button class="anl-wo-btn'+(_anlWoOnly?' active':'')+'" id="anlWoBtn">'+lbl+' ('+count+')'+(_anlWoOnly?'  ✕ clear':'')+'</button>';
+  }
   function render(){
     const rows=_anlLast||[];
     const sumEl=document.getElementById('anlSummary');
@@ -7620,14 +7672,20 @@ function initMorningReport() {
     const losers=rows.filter(r=>r.netLoss>=ANL_MIN).length;
     const gainers=rows.filter(r=>r.netLoss<=-ANL_MIN).length;
     const changed=rows.filter(r=>r.pump.changed).length;
+    const woCount=rows.filter(function(r){
+      if(_anlView==='losses') return r.woStop && r.netLoss>0 && r.netLoss>=_anlMin && r.netLoss<=_anlMax;
+      return r.woRestart && r.netLoss<0 && (-r.netLoss)>=_anlMin && (-r.netLoss)<=_anlMax;
+    }).length;
+    const woBal=rows.filter(function(r){ return r.woStop||r.woRestart; }).length;
     const body=document.getElementById('anlBody');
     body.innerHTML=
       '<div class="anl-subtabs">'+
         '<div class="anl-subtab '+(_anlView==='losses'?'active':'')+'" data-view="losses">Losses ('+losers+')</div>'+
         '<div class="anl-subtab '+(_anlView==='gains'?'active':'')+'" data-view="gains">Gains ('+gainers+')</div>'+
         '<div class="anl-subtab '+(_anlView==='pumps'?'active':'')+'" data-view="pumps">Pump changes ('+changed+')</div>'+
+        '<div class="anl-subtab '+(_anlView==='wobal'?'active':'')+'" data-view="wobal">Shut/Start ('+woBal+')</div>'+
       '</div>'+
-      ((_anlView==='losses'||_anlView==='gains')?('<input class="anl-search" id="anlSearch" placeholder="Filter well name…">'+sizeFilterHTML()):'')+
+      ((_anlView==='losses'||_anlView==='gains')?('<input class="anl-search" id="anlSearch" placeholder="Filter well name…">'+sizeFilterHTML()+woFilterHTML(woCount)):'')+
       '<div id="anlListWrap"></div>';
     renderList();
     const s=document.getElementById('anlSearch');
@@ -7720,7 +7778,7 @@ function initMorningReport() {
     Promise.all([loadSnapshot(bd),loadSnapshot(cd)]).then(function(res){
       const base=res[0],curr=res[1];
       if(!base||!curr){ body.innerHTML='<div class="empty-state"><div class="big">⚠️</div><p>Snapshot data missing for a selected date</p></div>'; return; }
-      _anlLast=compute(base,curr); _anlView='losses'; _anlFilter=''; _anlMin=5; _anlMax=Infinity;
+      _anlLast=compute(base,curr); _anlView='losses'; _anlFilter=''; _anlMin=5; _anlMax=Infinity; _anlWoOnly=false;
       render();
     }).catch(function(err){ console.error('[Analysis] run error',err); body.innerHTML='<div class="empty-state"><div class="big">⚠️</div><p>Error loading data: '+escHtml(err.message||'failed')+'</p></div>'; });
   };
@@ -7730,7 +7788,9 @@ function initMorningReport() {
   if(bodyEl){
     bodyEl.addEventListener('click',function(e){
       const tab=e.target.closest('.anl-subtab');
-      if(tab){ _anlView=tab.getAttribute('data-view'); render(); return; }
+      if(tab){ _anlView=tab.getAttribute('data-view'); _anlWoOnly=false; render(); return; }
+      const wob=e.target.closest('#anlWoBtn');
+      if(wob){ _anlWoOnly=!_anlWoOnly; render(); return; }
       const row=e.target.closest('.anl-row');
       if(row){ const d=row.querySelector('.anl-detail'); if(d) d.classList.toggle('open'); }
     });
