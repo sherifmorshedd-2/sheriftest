@@ -1629,6 +1629,7 @@ pre{
 .anl-sum-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px;}
 .anl-sum-val{font-size:17px;font-weight:700;color:var(--text);}
 .anl-sum-val.loss{color:var(--red);}
+.anl-sum-val.gain{color:var(--green);}
 .anl-sum-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:3px;}
 .anl-subtabs{display:flex;gap:6px;margin-bottom:10px;}
 .anl-subtab{flex:1;padding:8px 0;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;}
@@ -1657,6 +1658,12 @@ pre{
 .anl-dcell .dv{font-size:12px;font-weight:600;margin-top:3px;word-break:break-word;}
 .anl-sec-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px;font-weight:700;}
 .anl-search{width:100%;padding:9px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;margin-bottom:10px;font-family:'JetBrains Mono',monospace;}
+.anl-fltbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.anl-flt-lbl{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.5px;}
+.anl-flt-sel{flex:1;min-width:64px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:'JetBrains Mono',monospace;}
+.anl-flt-arrow{color:var(--muted);font-size:14px;}
+.anl-flt-reset{padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;}
+.anl-flt-count{margin-left:auto;}
 </style>
 <div class="page" id="page-analysis" style="display:none;">
   <div class="page-hdr">
@@ -1675,12 +1682,6 @@ pre{
         <select id="anlCurrDate"><option value="">—</option></select>
       </div>
       <button class="anl-run" id="anlRunBtn" onclick="anlRun()">Compare</button>
-    </div>
-    <div id="anlAdminUpload" class="anl-admin-upload" style="display:none;">
-      <span class="anl-hint">Backfill an old month without changing live data:</span>
-      <label class="anl-upload-btn">📥 Upload historical baseline
-        <input type="file" id="anlSnapFile" accept=".xlsx,.xls" style="display:none;">
-      </label>
     </div>
     <div id="anlSummary" class="anl-summary" style="display:none;"></div>
     <div id="anlBody">
@@ -7403,12 +7404,15 @@ function initMorningReport() {
   const SNAP_COL   = 'wellsSnapshots';
   const SNAP_META  = { col:'wellsSnapshotsMeta', doc:'info' };
   const ANL_M3_BBL = 6.28981;
+  const ANL_MIN    = 5;          // ignore |net change| below this (m³/d) — test-separator fluctuation
   let   SNAP_DATES = [];         // available snapshot dates, sorted DESC
   let   _snapMetaUnsub = null;
   const SNAP_CACHE = {};         // date -> slim wells array (loaded on demand)
   let   _anlLast = null;         // last computed comparison rows
-  let   _anlView = 'losses';     // 'losses' | 'pumps'
+  let   _anlView = 'losses';     // 'losses' | 'gains' | 'pumps'
   let   _anlFilter = '';
+  let   _anlMin    = 5;          // loss/gain magnitude lower bound (m³/d)
+  let   _anlMax    = Infinity;   // loss/gain magnitude upper bound (m³/d)
 
   function _snapId(date){ return String(date||'').replace(/[^0-9A-Za-z_-]/g,'_'); }
   function n(v){ const x=(v===''||v==null)?NaN:parseFloat(v); return isNaN(x)?0:x; }
@@ -7489,13 +7493,13 @@ function initMorningReport() {
       else if(pump.dir==='type') chips.push({cls:'pump-type',text:pump.label});
       const bProd=/producer/i.test(b.status), cProd=/producer/i.test(c.status);
       if(bProd&&!cProd) chips.push({cls:'pump-down',text:'Now '+(c.status||'off')});
-      // Primary cause (only meaningful when losing)
+      // Primary cause (only meaningful for a significant loss or gain)
       let primary='';
-      if(netLoss>0.5){
+      if(Math.abs(netLoss)>=ANL_MIN){
         const absLR=Math.abs(lossRate), absLW=Math.abs(lossWc);
-        if(pump.dir==='down' && lossRate>0.5 && absLR>=absLW) primary='pump';
-        else if(lossRate>=lossWc && lossRate>0.5) primary='rate';
-        else if(lossWc>0.5) primary='wc';
+        if((pump.dir==='down'||pump.dir==='up') && absLR>=absLW && absLR>0.5) primary='pump';
+        else if(absLR>=absLW && absLR>0.5) primary='rate';
+        else if(absLW>0.5) primary='wc';
       }
       rows.push({well:c.well,type:c.type,status:c.status,bStatus:b.status,
         bNet:bNet,cNet:cNet,netLoss:netLoss,bRate:bRate,cRate:cRate,rateDelta:rateDelta,
@@ -7508,7 +7512,7 @@ function initMorningReport() {
     for(const k in bm){
       if(cm[k]) continue;
       const b=bm[k]; const bNet=n(b.actNet);
-      if(bNet<=0.5) continue; // ignore wells that had no production to lose
+      if(bNet<ANL_MIN) continue; // ignore wells whose baseline was within fluctuation
       rows.push({well:b.well,type:b.type,status:b.status,bStatus:b.status,
         bNet:bNet,cNet:0,netLoss:bNet,bRate:n(b.actRate),cRate:0,rateDelta:-n(b.actRate),
         bWc:n(b.actWc),cWc:0,wcDelta:0,bPump:b.pump,cPump:'',pump:{changed:false,dir:'none',label:''},
@@ -7523,19 +7527,21 @@ function initMorningReport() {
 
   // ── Rendering ──
   function summaryCards(rows){
-    const losers=rows.filter(r=>r.netLoss>0.5);
+    const losers=rows.filter(r=>r.netLoss>=ANL_MIN);
+    const gainers=rows.filter(r=>r.netLoss<=-ANL_MIN);
     const totalLoss=losers.reduce((s,r)=>s+r.netLoss,0);
-    const gainers=rows.filter(r=>r.netLoss<-0.5).length;
-    const downs=rows.filter(r=>r.pump.dir==='down').length;
+    const totalGain=gainers.reduce((s,r)=>s+(-r.netLoss),0);
+    const net=totalLoss-totalGain;   // >0 = net oil lost, <0 = net oil gained
+    const netLbl=(net>=0?'-':'+')+fmt(Math.abs(net),1)+' m³/d';
     const cards=[
-      ['Wells compared',rows.length,false],
-      ['Wells with loss',losers.length,true],
-      ['Net oil lost',fmt(totalLoss,1)+' m³/d',true],
-      ['≈ Barrels/day',fmt(totalLoss*ANL_M3_BBL,0),true],
-      ['Pump downsizes',downs,false],
-      ['Wells improved',gainers,false]
+      ['Wells with loss',losers.length,'loss'],
+      ['Net oil lost','-'+fmt(totalLoss,1)+' m³/d','loss'],
+      ['Wells improved',gainers.length,'gain'],
+      ['Net oil gained','+'+fmt(totalGain,1)+' m³/d','gain'],
+      ['Total net change',netLbl,net>=0?'loss':'gain'],
+      ['≈ Barrels/day',(net>=0?'-':'+')+fmt(Math.abs(net)*ANL_M3_BBL,0),net>=0?'loss':'gain']
     ];
-    return cards.map(c=>'<div class="anl-sum-card"><div class="anl-sum-val'+(c[2]?' loss':'')+'">'+c[1]+'</div><div class="anl-sum-lbl">'+c[0]+'</div></div>').join('');
+    return cards.map(c=>'<div class="anl-sum-card"><div class="anl-sum-val'+(c[2]==='loss'?' loss':(c[2]==='gain'?' gain':''))+'">'+c[1]+'</div><div class="anl-sum-lbl">'+c[0]+'</div></div>').join('');
   }
   function detailHTML(r){
     const cell=(l,v)=>'<div class="anl-dcell"><div class="dl">'+l+'</div><div class="dv">'+v+'</div></div>';
@@ -7550,10 +7556,10 @@ function initMorningReport() {
       '<div style="font-size:11px;color:var(--muted);margin-top:8px">Manifold '+escHtml(r.manifold||'—')+' • TB '+escHtml(r.battery||'—')+' • Sub '+escHtml(r.substation||'—')+'</div>';
   }
   function rowHTML(r,i,note){
-    const lossCls=r.netLoss>0.5?'pos':(r.netLoss<-0.5?'neg':'');
+    const lossCls=r.netLoss>=ANL_MIN?'pos':(r.netLoss<=-ANL_MIN?'neg':'');
     const sign=r.netLoss>0.05?'-':(r.netLoss<-0.05?'+':'');
     const chips=r.chips.map(ch=>{
-      const prim=(r.primary==='rate'&&ch.cls==='rate')||(r.primary==='wc'&&ch.cls==='wc')||(r.primary==='pump'&&ch.cls==='pump-down');
+      const prim=(r.primary==='rate'&&ch.cls==='rate')||(r.primary==='wc'&&ch.cls==='wc')||(r.primary==='pump'&&(ch.cls==='pump-down'||ch.cls==='pump-up'));
       return '<span class="anl-chip '+ch.cls+(prim?' primary':'')+'">'+escHtml(ch.text)+'</span>';
     }).join('');
     const noteChip=note?'<span class="anl-chip pump-down">'+escHtml(note)+'</span>':'';
@@ -7569,8 +7575,8 @@ function initMorningReport() {
     const changed=rows.filter(r=>r.pump.changed);
     if(!changed.length) return '<div class="empty-state"><div class="big">🔧</div><p>No pump changes between these two dates</p></div>';
     const downs=changed.filter(r=>r.pump.dir==='down');
-    const ineff=changed.filter(r=>r.pump.dir==='up' && (r.cNet-r.bNet)<=2);
-    const effUp=changed.filter(r=>r.pump.dir==='up' && (r.cNet-r.bNet)>2);
+    const ineff=changed.filter(r=>r.pump.dir==='up' && (r.cNet-r.bNet)<ANL_MIN);
+    const effUp=changed.filter(r=>r.pump.dir==='up' && (r.cNet-r.bNet)>=ANL_MIN);
     const types=changed.filter(r=>r.pump.dir==='type');
     const sec=(title,arr,note)=> arr.length?('<div class="anl-sec-title">'+title+' ('+arr.length+')</div>'+arr.map(r=>rowHTML(r,null,note)).join('')):'';
     return sec('⬇ Downsized pumps',downs,'')+
@@ -7582,28 +7588,56 @@ function initMorningReport() {
     const wrap=document.getElementById('anlListWrap'); if(!wrap) return;
     const rows=_anlLast||[];
     if(_anlView==='pumps'){ wrap.innerHTML=pumpsHTML(rows); return; }
-    let losers=rows.filter(r=>r.netLoss>0.5);
-    if(_anlFilter) losers=losers.filter(r=>r.well.toLowerCase().indexOf(_anlFilter)>=0);
-    if(!losers.length){ wrap.innerHTML='<div class="empty-state"><div class="big">✅</div><p>No production losses for this range</p></div>'; return; }
-    wrap.innerHTML=losers.map((r,i)=>rowHTML(r,i)).join('');
+    let list;
+    const inSize=function(mag){ return mag>=_anlMin && mag<=_anlMax; };
+    if(_anlView==='gains'){ list=rows.filter(r=>r.netLoss<0 && inSize(-r.netLoss)).slice().sort((a,b)=>a.netLoss-b.netLoss); }
+    else { list=rows.filter(r=>r.netLoss>0 && inSize(r.netLoss)); }
+    if(_anlFilter) list=list.filter(r=>r.well.toLowerCase().indexOf(_anlFilter)>=0);
+    const cntEl=document.getElementById('anlFltCount'); if(cntEl) cntEl.textContent=list.length+' well'+(list.length===1?'':'s');
+    if(!list.length){ const rng=(_anlMax===Infinity?(_anlMin+'+'):(_anlMin+'–'+_anlMax)); wrap.innerHTML='<div class="empty-state"><div class="big">✅</div><p>No '+(_anlView==='gains'?'gains':'losses')+' in '+rng+' m³/d</p></div>'; return; }
+    wrap.innerHTML=list.map((r,i)=>rowHTML(r,i)).join('');
+  }
+  function sizeFilterHTML(){
+    const kind=(_anlView==='gains')?'Gain':'Loss';
+    const mins=[[0,'&lt;5 (all)'],[5,'5'],[10,'10'],[20,'20'],[30,'30'],[50,'50']];
+    const maxs=[[5,'5'],[10,'10'],[20,'20'],[30,'30'],[50,'50'],['inf','∞ (no limit)']];
+    const mo=mins.map(o=>'<option value="'+o[0]+'"'+(parseFloat(o[0])===_anlMin?' selected':'')+'>'+o[1]+'</option>').join('');
+    const curMax=(_anlMax===Infinity)?'inf':String(_anlMax);
+    const xo=maxs.map(o=>'<option value="'+o[0]+'"'+(String(o[0])===curMax?' selected':'')+'>'+o[1]+'</option>').join('');
+    return '<div class="anl-fltbar">'+
+      '<span class="anl-flt-lbl">'+kind+' m³/d</span>'+
+      '<select class="anl-flt-sel" id="anlMinSel">'+mo+'</select>'+
+      '<span class="anl-flt-arrow">→</span>'+
+      '<select class="anl-flt-sel" id="anlMaxSel">'+xo+'</select>'+
+      '<span class="anl-flt-reset" id="anlFltReset">Reset</span>'+
+      '<span class="anl-flt-lbl anl-flt-count" id="anlFltCount"></span>'+
+    '</div>';
   }
   function render(){
     const rows=_anlLast||[];
     const sumEl=document.getElementById('anlSummary');
     sumEl.style.display='grid'; sumEl.innerHTML=summaryCards(rows);
-    const losers=rows.filter(r=>r.netLoss>0.5).length;
+    const losers=rows.filter(r=>r.netLoss>=ANL_MIN).length;
+    const gainers=rows.filter(r=>r.netLoss<=-ANL_MIN).length;
     const changed=rows.filter(r=>r.pump.changed).length;
     const body=document.getElementById('anlBody');
     body.innerHTML=
       '<div class="anl-subtabs">'+
         '<div class="anl-subtab '+(_anlView==='losses'?'active':'')+'" data-view="losses">Losses ('+losers+')</div>'+
+        '<div class="anl-subtab '+(_anlView==='gains'?'active':'')+'" data-view="gains">Gains ('+gainers+')</div>'+
         '<div class="anl-subtab '+(_anlView==='pumps'?'active':'')+'" data-view="pumps">Pump changes ('+changed+')</div>'+
       '</div>'+
-      (_anlView==='losses'?'<input class="anl-search" id="anlSearch" placeholder="Filter well name…">':'')+
+      ((_anlView==='losses'||_anlView==='gains')?('<input class="anl-search" id="anlSearch" placeholder="Filter well name…">'+sizeFilterHTML()):'')+
       '<div id="anlListWrap"></div>';
     renderList();
     const s=document.getElementById('anlSearch');
     if(s){ s.value=_anlFilter; s.addEventListener('input',function(){ _anlFilter=this.value.trim().toLowerCase(); renderList(); }); }
+    const mn=document.getElementById('anlMinSel');
+    if(mn) mn.addEventListener('change',function(){ _anlMin=parseFloat(this.value)||0; if(_anlMin>_anlMax) _anlMax=Infinity; render(); });
+    const mx=document.getElementById('anlMaxSel');
+    if(mx) mx.addEventListener('change',function(){ _anlMax=(this.value==='inf')?Infinity:(parseFloat(this.value)||Infinity); if(_anlMax<_anlMin) _anlMin=0; render(); });
+    const rs=document.getElementById('anlFltReset');
+    if(rs) rs.addEventListener('click',function(){ _anlMin=5; _anlMax=Infinity; render(); });
   }
 
   // ── Firestore snapshot layer ──
@@ -7662,8 +7696,6 @@ function initMorningReport() {
   }
 
   window.refreshAnalysisPage=function(){
-    const up=document.getElementById('anlAdminUpload');
-    if(up) up.style.display=(typeof isAdmin!=='undefined'&&isAdmin)?'flex':'none';
     populatePickers();
     if(_anlLast){ render(); return; }
     const body=document.getElementById('anlBody');
@@ -7671,7 +7703,7 @@ function initMorningReport() {
     if(!body) return;
     if(SNAP_DATES.length<2){
       const adm=(typeof isAdmin!=='undefined'&&isAdmin);
-      body.innerHTML='<div class="empty-state"><div class="big">📉</div><p>Need at least two dated snapshots to compare.<br>'+(adm?'Upload months via <b>Update DB</b> (auto-saved), or backfill a historical file above.':'Ask an admin to upload monthly data.')+'</p></div>';
+      body.innerHTML='<div class="empty-state"><div class="big">📉</div><p>Need at least two dated snapshots to compare.<br>'+(adm?'Upload months via <b>Update DB</b> (each upload is saved automatically).':'Ask an admin to upload monthly data.')+'</p></div>';
     } else {
       body.innerHTML='<div class="empty-state"><div class="big">📉</div><p>Select two dates and tap Compare</p></div>';
     }
@@ -7688,7 +7720,7 @@ function initMorningReport() {
     Promise.all([loadSnapshot(bd),loadSnapshot(cd)]).then(function(res){
       const base=res[0],curr=res[1];
       if(!base||!curr){ body.innerHTML='<div class="empty-state"><div class="big">⚠️</div><p>Snapshot data missing for a selected date</p></div>'; return; }
-      _anlLast=compute(base,curr); _anlView='losses'; _anlFilter='';
+      _anlLast=compute(base,curr); _anlView='losses'; _anlFilter=''; _anlMin=5; _anlMax=Infinity;
       render();
     }).catch(function(err){ console.error('[Analysis] run error',err); body.innerHTML='<div class="empty-state"><div class="big">⚠️</div><p>Error loading data: '+escHtml(err.message||'failed')+'</p></div>'; });
   };
@@ -7740,9 +7772,7 @@ function initMorningReport() {
   }
   window.anlRenderSnapStatus=renderSnapStatus;
 
-  // Wiring — Analysis-tab backfill button + Update DB comparison-file input share one path
-  const snapFile=document.getElementById('anlSnapFile');
-  if(snapFile){ snapFile.addEventListener('change',function(){ const f=this.files&&this.files[0]; this.value=''; window.uploadBaselineSnapshot(f,function(){ const p=document.getElementById('page-analysis'); if(p&&p.classList.contains('active')) refreshAnalysisPage(); }); }); }
+  // Wiring — Update DB "Comparison File" input stores a dated baseline snapshot
   const cmpFile=document.getElementById('cmpFileInput');
   if(cmpFile){ cmpFile.addEventListener('change',function(){ const f=this.files&&this.files[0]; this.value=''; window.uploadBaselineSnapshot(f,function(sit,c){ renderSnapStatus(); showToast('✅ '+c+' wells stored as baseline: '+formatSituationDate(sit)); }); }); }
 })();
