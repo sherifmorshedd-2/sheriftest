@@ -894,6 +894,142 @@ pre{
 .hist-row-actions{display:inline-flex;gap:3px;margin-left:6px;vertical-align:middle;}
 .hist-row-btn{background:transparent;border:1px solid var(--border);border-radius:4px;padding:1px 4px;cursor:pointer;font-size:10px;line-height:1;opacity:.55;transition:opacity .15s;}
 .hist-row-btn:hover{opacity:1;background:var(--surface);}
+
+/* ══════════════════════════════════════════════════════════
+   DAY / LIGHT MODE  ·  WhatsApp-inspired warm palette
+   ──────────────────────────────────────────────────────────
+   Activated by  <body class="light-mode">
+   Auto-detects system prefers-color-scheme at startup.
+   Toggle with the ☀️ / 🌙 button in the user bar.
+   ══════════════════════════════════════════════════════════ */
+
+body.light-mode{
+  --bg:#ECE5DD;--surface:#FFFFFF;--card:#F0F2F5;--border:#D1D7DB;
+  --accent:#075E54;--accent2:#D97706;--green:#128C7E;--yellow:#92400E;
+  --red:#B91C1C;--text:#111B21;--muted:#667781;
+  --gold:#92400E;--deep:#E9EDEF;
+}
+
+/* Strip dark atmospheric gradients & vignette */
+body.light-mode{background-image:none !important;}
+body.light-mode #login-page{background-image:none !important;}
+body.light-mode::before{display:none !important;}
+
+/* ── Nav ── */
+body.light-mode .nav-btn.active{background:rgba(7,94,84,.08) !important;}
+body.light-mode .nav-icon-glow{background:radial-gradient(circle, rgba(7,94,84,.10) 0%, transparent 70%) !important;}
+
+/* ── Stat cards ── */
+body.light-mode .stat-card-breakdown{border-top-color:rgba(18,140,126,.2) !important;}
+body.light-mode .breakdown-divider{background:rgba(18,140,126,.25) !important;}
+
+/* ── Search ── */
+body.light-mode .search-input:focus{box-shadow:0 0 0 2px rgba(7,94,84,.15) !important;}
+body.light-mode .sug-item:active{background:rgba(7,94,84,.08) !important;}
+
+/* ── Well hero — Actual production section (has dark hardcoded gradient) ── */
+body.light-mode .actual-section{
+  border-color:rgba(7,94,84,.3) !important;
+  background:linear-gradient(135deg, rgba(7,94,84,.07), rgba(240,242,245,.97) 55%) !important;
+  box-shadow:0 0 16px rgba(7,94,84,.08) !important;
+}
+body.light-mode .actual-section .field{border-bottom-color:rgba(7,94,84,.1) !important;}
+body.light-mode .actual-title{
+  background:linear-gradient(90deg, rgba(7,94,84,.1), rgba(240,242,245,1)) !important;
+}
+
+/* Live rate box */
+body.light-mode .live-box{
+  background:rgba(7,94,84,.05) !important;
+  border-color:rgba(7,94,84,.18) !important;
+}
+
+/* ── Field separators & table cell borders ── */
+body.light-mode .field{border-bottom-color:rgba(0,0,0,.08) !important;}
+body.light-mode .preview-table td,
+body.light-mode .substation-table td{border-bottom-color:rgba(0,0,0,.08) !important;}
+
+/* ── Light-on-light text fixes ── */
+body.light-mode .f-val.wht{color:#1a4a6e !important;}
+body.light-mode .f-val.bbl{color:#1a6e8a !important;}
+body.light-mode .badge.rep{color:var(--green) !important;border-color:rgba(18,140,126,.4) !important;background:rgba(18,140,126,.1) !important;}
+body.light-mode .badge.tmr{color:#374e66 !important;border-color:#4a6680 !important;background:rgba(58,96,128,.1) !important;}
+body.light-mode .badge.rig{background:rgba(7,94,84,.1) !important;}
+body.light-mode .badge.live{background:rgba(7,94,84,.15) !important;}
+
+/* ── Suggestion items ── */
+body.light-mode .is-item:active{background:rgba(7,94,84,.08) !important;}
+
+/* ── Upload zone ── */
+body.light-mode .upload-zone:active,
+body.light-mode .upload-zone.drag{background:rgba(7,94,84,.04) !important;}
+
+/* ── Update intro panel ── */
+body.light-mode .update-intro{
+  background:rgba(7,94,84,.06) !important;
+  border-color:rgba(7,94,84,.2) !important;
+}
+
+/* ── Substation chip ── */
+body.light-mode .substation-chip:active{background:rgba(7,94,84,.08) !important;}
+
+/* ── Map links ── */
+body.light-mode .well-map-link{border-color:rgba(7,94,84,.35) !important;}
+body.light-mode .well-map-link:hover{background:rgba(7,94,84,.12) !important;}
+body.light-mode .well-map-pin:hover{background:rgba(7,94,84,.15) !important;}
+
+/* ── Manifold icon wrap ── */
+body.light-mode .manifold-icon-wrap{
+  background:rgba(7,94,84,.06) !important;
+  border-color:rgba(7,94,84,.18) !important;
+  box-shadow:0 0 18px rgba(7,94,84,.08) !important;
+}
+
+/* ── Chemical page ── */
+body.light-mode .chem-card{
+  background:linear-gradient(135deg, rgba(7,94,84,.06), rgba(240,242,245,.98)) !important;
+}
+body.light-mode .chem-pill{border-color:rgba(7,94,84,.25) !important;background:rgba(7,94,84,.07) !important;}
+body.light-mode .chem-pill.active{box-shadow:0 0 0 1px rgba(7,94,84,.12) inset !important;}
+body.light-mode .chem-well:active{background:rgba(7,94,84,.06) !important;}
+
+/* ── T.B. Production page ── */
+body.light-mode .tb-date-pill{background:rgba(7,94,84,.10) !important;border-color:rgba(7,94,84,.25) !important;}
+body.light-mode .tb-total-cell.act-box{background:rgba(7,94,84,.04) !important;border-color:rgba(7,94,84,.18) !important;}
+body.light-mode .tb-battery-hdr:active,
+body.light-mode .tb-battery-hdr.open{background:rgba(7,94,84,.05) !important;}
+body.light-mode .tb-box-title{border-bottom-color:rgba(0,0,0,.08) !important;}
+body.light-mode .tb-metric{border-bottom-color:rgba(0,0,0,.06) !important;}
+body.light-mode .tb-thead{background:rgba(220,224,227,.95) !important;}
+
+/* ── Login card ── */
+body.light-mode .login-card{box-shadow:0 8px 32px rgba(0,0,0,.12) !important;}
+body.light-mode .login-logo img{box-shadow:0 4px 16px rgba(7,94,84,.15) !important;}
+
+/* ── History divider ── */
+body.light-mode .hist-divider-title{
+  background:rgba(7,94,84,.08) !important;
+  border-color:rgba(7,94,84,.35) !important;
+}
+
+/* ── Analysis page chips & WO button ── */
+body.light-mode .anl-chip.wc{border-color:rgba(7,94,84,.4) !important;}
+body.light-mode .anl-wo-btn.active{
+  background:rgba(7,94,84,.14) !important;
+  border-color:var(--accent) !important;
+  color:var(--accent) !important;
+}
+
+/* ── Theme toggle button (sits inside the user bar) ── */
+.theme-toggle{
+  background:none;border:none;cursor:pointer;
+  font-size:17px;line-height:1;padding:3px 7px;
+  border-radius:7px;flex-shrink:0;
+  color:var(--muted);margin-left:4px;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .15s;
+}
+.theme-toggle:active{background:rgba(128,128,128,.15);}
 </style>
 </head>
 <body>
@@ -942,6 +1078,7 @@ pre{
 <div class="user-bar hidden" id="userBar">
   <span class="ub-email" id="ubEmail"></span>
   <span class="ub-role" id="ubRole"></span>
+  <button class="theme-toggle" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle day / night mode" aria-label="Toggle theme">🌙</button>
   <button class="ub-logout" onclick="handleLogout()">LOGOUT</button>
 </div>
 
@@ -1669,6 +1806,42 @@ pre{
 .anl-flt-arrow{color:var(--muted);font-size:14px;}
 .anl-flt-reset{padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;}
 .anl-flt-count{margin-left:auto;}
+/* ── Snapshot list rows (Update DB → Comparison section) ── */
+.snap-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
+.snap-row:last-child{border-bottom:none;}
+.snap-row-date{font-size:12px;color:var(--text);font-family:'JetBrains Mono',monospace;line-height:1.4;}
+.snap-del-btn{
+  background:none;border:none;cursor:pointer;
+  font-size:16px;line-height:1;padding:4px 7px;
+  border-radius:7px;opacity:.55;flex-shrink:0;
+  transition:opacity .15s,background .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.snap-del-btn:active{opacity:1;background:rgba(248,113,113,.18);}
+
+/* ── Balance tab footer ── */
+.anl-bal-footer{margin-top:18px;padding-top:14px;border-top:2px solid var(--border);}
+.anl-bal-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+.anl-bal-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 10px;text-align:center;}
+.anl-bal-item.loss{border-color:rgba(248,113,113,.35);}
+.anl-bal-item.gain{border-color:rgba(16,185,129,.35);}
+.anl-bal-icon{font-size:22px;margin-bottom:5px;}
+.anl-bal-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;}
+.anl-bal-m3{font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1.1;}
+.anl-bal-bbl{font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:4px;opacity:.8;}
+.anl-bal-item.loss .anl-bal-m3,.anl-bal-item.loss .anl-bal-bbl{color:var(--red);}
+.anl-bal-item.gain .anl-bal-m3,.anl-bal-item.gain .anl-bal-bbl{color:var(--green);}
+.anl-bal-net{border-radius:14px;padding:18px 14px;text-align:center;}
+.anl-bal-net.loss{background:rgba(248,113,113,.08);border:2px solid rgba(248,113,113,.4);}
+.anl-bal-net.gain{background:rgba(16,185,129,.08);border:2px solid rgba(16,185,129,.4);}
+.anl-bal-net.zero{background:var(--surface);border:2px solid var(--border);}
+.anl-bal-net-lbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.anl-bal-net-m3{font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1;}
+.anl-bal-net-bbl{font-size:16px;font-family:'JetBrains Mono',monospace;margin-top:6px;font-weight:700;}
+.anl-bal-net-note{font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:.3px;}
+.anl-bal-net.loss .anl-bal-net-m3,.anl-bal-net.loss .anl-bal-net-bbl{color:var(--red);}
+.anl-bal-net.gain .anl-bal-net-m3,.anl-bal-net.gain .anl-bal-net-bbl{color:var(--green);}
+.anl-bal-net.zero .anl-bal-net-m3,.anl-bal-net.zero .anl-bal-net-bbl{color:var(--muted);}
 </style>
 <div class="page" id="page-analysis" style="display:none;">
   <div class="page-hdr">
@@ -7611,6 +7784,7 @@ function initMorningReport() {
     const rows=_anlLast||[];
     if(_anlView==='pumps'){ wrap.innerHTML=pumpsHTML(rows); return; }
     if(_anlView==='wobal'){ wrap.innerHTML=woBalanceHTML(rows); return; }
+    if(_anlView==='balance'){ wrap.innerHTML=balanceHTML(rows); return; }
     let list;
     const inSize=function(mag){ return mag>=_anlMin && mag<=_anlMax; };
     if(_anlView==='gains'){ list=rows.filter(r=>r.netLoss<0 && inSize(-r.netLoss)).slice().sort((a,b)=>a.netLoss-b.netLoss); }
@@ -7659,6 +7833,53 @@ function initMorningReport() {
       '</div>';
     return sec('🔻 Lost to W.O. / Rig On',stopped)+sec('🔼 Restarted after W.O. / Rig On',restarted)+foot;
   }
+
+  // ── Balance tab: combined losses + gains list with net result footer ──
+  function balanceHTML(rows){
+    const lossRows=rows.filter(function(r){ return r.netLoss>=ANL_MIN; }).slice().sort(function(a,b){ return b.netLoss-a.netLoss; });
+    const gainRows=rows.filter(function(r){ return r.netLoss<=-ANL_MIN; }).slice().sort(function(a,b){ return a.netLoss-b.netLoss; });
+    const totalLost  =lossRows.reduce(function(s,r){ return s+r.netLoss; },0);
+    const totalGained=gainRows.reduce(function(s,r){ return s+(-r.netLoss); },0);
+    const netM3 =totalGained-totalLost;
+    const netZero=(Math.abs(netM3)<0.05);      // treat ±0.05 m³/d as effectively zero
+    const netCls =netZero?'zero':(netM3>0?'gain':'loss');
+    const netSign=netZero?'±':(netM3>0?'+':'−');
+    const netNote=netZero?'No net change vs baseline':(netM3>0?'Net production gain vs baseline':'Net production loss vs baseline');
+    const netBbl =Math.abs(netM3)*ANL_M3_BBL;
+    const lostBbl =totalLost*ANL_M3_BBL;
+    const gainedBbl=totalGained*ANL_M3_BBL;
+    const lossSec=lossRows.length
+      ? '<div class="anl-sec-title">📉 Losses — '+lossRows.length+' well'+(lossRows.length===1?'':'s')+'</div>'+lossRows.map(function(r,i){ return rowHTML(r,i); }).join('')
+      : '<div class="anl-sec-title">📉 Losses</div><div class="anl-woempty">No significant losses in this period</div>';
+    const gainSec=gainRows.length
+      ? '<div class="anl-sec-title">📈 Gains — '+gainRows.length+' well'+(gainRows.length===1?'':'s')+'</div>'+gainRows.map(function(r,i){ return rowHTML(r,i); }).join('')
+      : '<div class="anl-sec-title">📈 Gains</div><div class="anl-woempty">No significant gains in this period</div>';
+    const footer=
+      '<div class="anl-bal-footer">'+
+        '<div class="anl-bal-row">'+
+          '<div class="anl-bal-item loss">'+
+            '<div class="anl-bal-icon">📉</div>'+
+            '<div class="anl-bal-lbl">Total Lost</div>'+
+            '<div class="anl-bal-m3">−'+fmt(totalLost,1)+' m³/d</div>'+
+            '<div class="anl-bal-bbl">−'+fmt(lostBbl,0)+' bbl/d</div>'+
+          '</div>'+
+          '<div class="anl-bal-item gain">'+
+            '<div class="anl-bal-icon">📈</div>'+
+            '<div class="anl-bal-lbl">Total Gained</div>'+
+            '<div class="anl-bal-m3">+'+fmt(totalGained,1)+' m³/d</div>'+
+            '<div class="anl-bal-bbl">+'+fmt(gainedBbl,0)+' bbl/d</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="anl-bal-net '+netCls+'">'+
+          '<div class="anl-bal-net-lbl">⚖ Net Period Balance</div>'+
+          '<div class="anl-bal-net-m3">'+netSign+fmt(Math.abs(netM3),1)+' m³/d</div>'+
+          '<div class="anl-bal-net-bbl">'+netSign+fmt(Math.abs(netBbl),0)+' bbl/d</div>'+
+          '<div class="anl-bal-net-note">'+netNote+'</div>'+
+        '</div>'+
+      '</div>';
+    return lossSec+gainSec+footer;
+  }
+
   function woFilterHTML(count){
     if(!count) return '';
     const stop=(_anlView==='losses');
@@ -7682,6 +7903,7 @@ function initMorningReport() {
       '<div class="anl-subtabs">'+
         '<div class="anl-subtab '+(_anlView==='losses'?'active':'')+'" data-view="losses">Losses ('+losers+')</div>'+
         '<div class="anl-subtab '+(_anlView==='gains'?'active':'')+'" data-view="gains">Gains ('+gainers+')</div>'+
+        '<div class="anl-subtab '+(_anlView==='balance'?'active':'')+'" data-view="balance">⚖ Balance</div>'+
         '<div class="anl-subtab '+(_anlView==='pumps'?'active':'')+'" data-view="pumps">Pump changes ('+changed+')</div>'+
         '<div class="anl-subtab '+(_anlView==='wobal'?'active':'')+'" data-view="wobal">Shut/Start ('+woBal+')</div>'+
       '</div>'+
@@ -7825,16 +8047,133 @@ function initMorningReport() {
     const cnt=document.getElementById('snapCloudCount');
     if(cnt) cnt.textContent = SNAP_DATES.length ? String(SNAP_DATES.length) : 'None yet';
     const st=document.getElementById('cmpAdminStatus');
-    if(st){
-      if(SNAP_DATES.length){ st.style.display='block'; st.innerHTML='Stored baseline snapshots:<br>'+SNAP_DATES.map(d=>'• '+escHtml(formatSituationDate(d))).join('<br>'); }
-      else { st.style.display='none'; st.innerHTML=''; }
-    }
+    if(!st) return;
+    if(!SNAP_DATES.length){ st.style.display='none'; st.innerHTML=''; return; }
+    const admin=(typeof isAdmin!=='undefined'&&isAdmin);
+    st.style.display='block';
+    // Buttons use data-snapdate; clicks are handled by the delegated listener below
+    // (no inline onclick → avoids JS-string injection risk)
+    st.innerHTML=
+      '<div style="font-size:10px;color:var(--muted);font-family:\'JetBrains Mono\',monospace;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Stored baseline snapshots</div>'+
+      SNAP_DATES.map(function(d){
+        return '<div class="snap-row">'+
+          '<span class="snap-row-date">📅 '+escHtml(formatSituationDate(d))+'</span>'+
+          (admin
+            ? '<button class="snap-del-btn" data-snapdate="'+escAttr(d)+'" title="Remove this snapshot" aria-label="Delete snapshot for '+escAttr(formatSituationDate(d))+'">🗑️</button>'
+            : '')+
+        '</div>';
+      }).join('');
   }
   window.anlRenderSnapStatus=renderSnapStatus;
+
+  // ── Delete a stored baseline snapshot (admin only) ──
+  // Uses a Firestore batch so the snapshot doc delete and meta update are atomic —
+  // if either write fails the whole batch is rolled back, preventing orphaned entries.
+  function _doDeleteSnapshot(date){
+    if(typeof isAdmin==='undefined'||!isAdmin){ showToast('Admin only',true); return; }
+    const label=formatSituationDate(date);
+    if(!window.confirm(
+      'Delete baseline snapshot for:\n\n  '+label+'\n\nThis will permanently remove it from the Analysis comparison tool and cannot be undone.'
+    )) return;
+    showToast('Deleting snapshot…');
+    // Compute new dates list before committing so the batch carries the final value
+    const newDates=SNAP_DATES.filter(function(d){ return d!==date; });
+    const batch=db.batch();
+    batch.delete(db.collection(SNAP_COL).doc(_snapId(date)));
+    batch.set(db.collection(SNAP_META.col).doc(SNAP_META.doc),{
+      dates:newDates,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    batch.commit()
+      .then(function(){
+        // Prune local state immediately for instant UI feedback.
+        // The live meta listener will also fire and confirm the change.
+        delete SNAP_CACHE[date];
+        SNAP_DATES=newDates;
+        // Clear any stale analysis results so the user cannot compare against
+        // a snapshot that no longer exists
+        _anlLast=null;
+        renderSnapStatus();
+        // If the Analysis tab is currently open, reset it to the empty/picker state
+        const anlPage=document.getElementById('page-analysis');
+        if(anlPage&&anlPage.classList.contains('active')) refreshAnalysisPage();
+        showToast('🗑️ Snapshot deleted: '+label);
+      })
+      .catch(function(err){
+        console.error('[Snapshot] delete error',err);
+        showToast('⚠️ Delete failed: '+(err.message||'unknown error'),true);
+      });
+  }
+  // Delegated listener — handles delete button clicks inside the status panel
+  // without exposing any function through window or inline handlers
+  (function(){
+    const st=document.getElementById('cmpAdminStatus');
+    if(st){ st.addEventListener('click',function(e){
+      const btn=e.target.closest('.snap-del-btn');
+      if(btn) _doDeleteSnapshot(btn.getAttribute('data-snapdate'));
+    }); }
+  })();
 
   // Wiring — Update DB "Comparison File" input stores a dated baseline snapshot
   const cmpFile=document.getElementById('cmpFileInput');
   if(cmpFile){ cmpFile.addEventListener('change',function(){ const f=this.files&&this.files[0]; this.value=''; window.uploadBaselineSnapshot(f,function(sit,c){ renderSnapStatus(); showToast('✅ '+c+' wells stored as baseline: '+formatSituationDate(sit)); }); }); }
+})();
+</script>
+
+<!-- ══════════════════════════════════════════
+     DAY / NIGHT THEME  — system-aware + manual toggle
+     ══════════════════════════════════════════ -->
+<script>
+(function(){
+  var KEY = 'petrobel-theme';
+
+  /* Apply a theme: 'light' or 'dark'.
+     Pass persist=true ONLY for explicit user toggles so that
+     the OS-change listener can still fire when no manual pref is set. */
+  function applyTheme(mode, persist){
+    var light = (mode === 'light');
+    document.body.classList.toggle('light-mode', light);
+    /* Sync loading screen background so there is no dark flash on light devices */
+    var ls = document.getElementById('loading-screen');
+    if(ls) ls.style.background = light ? '#ECE5DD' : '#060b12';
+    var btn = document.getElementById('themeToggleBtn');
+    if(btn) btn.textContent = light ? '☀️' : '🌙';
+    /* Keep PWA title-bar colour in sync with the active palette */
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if(meta) meta.setAttribute('content', light ? '#075E54' : '#22d3ee');
+    if(persist){ try{ localStorage.setItem(KEY, mode); }catch(_){} }
+  }
+
+  /* Button handler — always persists the manual choice */
+  window.toggleTheme = function(){
+    applyTheme(document.body.classList.contains('light-mode') ? 'dark' : 'light', true);
+  };
+
+  /* Init: saved manual pref → OS system theme → default dark */
+  function init(){
+    var saved;
+    try{ saved = localStorage.getItem(KEY); }catch(_){}
+    if(saved === 'light' || saved === 'dark'){ applyTheme(saved, false); return; }
+    /* No manual pref — mirror the OS without writing to storage */
+    var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+    applyTheme((mq && mq.matches) ? 'light' : 'dark', false);
+  }
+
+  /* Watch live OS theme changes — only applies when the user has no saved pref */
+  var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+  if(mq){
+    var onChange = function(e){
+      var saved; try{ saved = localStorage.getItem(KEY); }catch(_){}
+      if(!saved) applyTheme(e.matches ? 'light' : 'dark', false);
+    };
+    /* Support modern addEventListener + legacy addListener (older Safari/WebView) */
+    try{
+      if(typeof mq.addEventListener === 'function') mq.addEventListener('change', onChange);
+      else if(typeof mq.addListener === 'function') mq.addListener(onChange);
+    }catch(_){}
+  }
+
+  init();
 })();
 </script>
 
