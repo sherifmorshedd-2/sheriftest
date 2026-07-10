@@ -1020,6 +1020,28 @@ body.light-mode .anl-wo-btn.active{
   color:var(--accent) !important;
 }
 
+/* ── Analysis Compare button — hardcoded #04121a text is invisible on dark-teal bg ── */
+body.light-mode .anl-run{color:#FFFFFF !important;}
+
+/* ── Lookup page header — hardcoded dark navy gradient ── */
+body.light-mode .app-header{
+  background:linear-gradient(135deg,#FFFFFF,#F0F2F5) !important;
+  border-bottom-color:var(--border) !important;
+}
+body.light-mode .app-header::after{
+  background:radial-gradient(circle, rgba(7,94,84,.06) 0%, transparent 70%) !important;
+}
+/* Situation date bar — hardcoded cyan rgba tints */
+body.light-mode .situation-date-bar{
+  background:rgba(7,94,84,.06) !important;
+  border-color:rgba(7,94,84,.2) !important;
+}
+/* Install-as-app banner — hardcoded cyan rgba tints */
+body.light-mode .install-banner{
+  background:rgba(7,94,84,.06) !important;
+  border-color:rgba(7,94,84,.22) !important;
+}
+
 /* ── Theme toggle button (sits inside the user bar) ── */
 .theme-toggle{
   background:none;border:none;cursor:pointer;
@@ -7877,7 +7899,7 @@ function initMorningReport() {
           '<div class="anl-bal-net-note">'+netNote+'</div>'+
         '</div>'+
       '</div>';
-    return lossSec+gainSec+footer;
+    return footer+lossSec+gainSec;
   }
 
   function woFilterHTML(count){
@@ -8154,9 +8176,8 @@ function initMorningReport() {
     var saved;
     try{ saved = localStorage.getItem(KEY); }catch(_){}
     if(saved === 'light' || saved === 'dark'){ applyTheme(saved, false); return; }
-    /* No manual pref — mirror the OS without writing to storage */
-    var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
-    applyTheme((mq && mq.matches) ? 'light' : 'dark', false);
+    /* No manual pref — default to light (day) mode */
+    applyTheme('light', false);
   }
 
   /* Watch live OS theme changes — only applies when the user has no saved pref */
