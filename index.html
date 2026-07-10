@@ -3149,7 +3149,13 @@ function renderWell(well, source='lookup'){
   const amp = getWellValue(well, ['AMP']);
   const hz = getHz(well);
   const hp = getMotorHp(well);
-  const chem = getWellValue(well, ['CHEMICAL', 'CHEMICAL ']);
+  // Chemical injection type: prefer the live Chemical Injection Survey (matches
+  // the Chemical tab exactly, well name is Firestore-synced across devices) and
+  // fall back to the raw well-DB "Chemical" column for wells the survey doesn't cover.
+  const chemRec = getChemicalRecordByWell(well['Well']);
+  const chemFromSurvey = (chemRec && chemRec.chemicals.length) ? chemRec.chemicals.join(' + ') : '';
+  const chem = chemFromSurvey || getWellValue(well, ['CHEMICAL', 'CHEMICAL ']);
+  const chemSurveyEntries = (chemRec && chemRec.surveyData && chemRec.surveyData.length) ? chemRec.surveyData : [];
   const runningDays = calcRunningDays(getWellValue(well, ['LAST W.O', 'LAST WO']));
   const chemicalBadge = chem ? `<span class="badge other">${escHtml(chem)}</span>` : '';
   const h2sPpmRaw = safeNum(getWellValue(well, COLUMNS.h2sPpm));
@@ -3226,6 +3232,12 @@ function renderWell(well, source='lookup'){
         return fld('H2S Blank', `${hi?'⚠ ':''}${h2sBlankRaw} PPM`, {rawStyle:style});
       })()}
     </div>
+
+    ${chemSurveyEntries.length ? `
+    <div class="section">
+      <div class="sec-title">💉 Chemical Injection Details <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">${escHtml((typeof CHEM_SURVEY!=='undefined'&&CHEM_SURVEY&&CHEM_SURVEY.reportDate)||'')}</span></div>
+      <div style="padding:12px 14px;">${chemSurveyEntries.map(chemSurveyCard).join('')}</div>
+    </div>` : ''}
 
     <div class="section">
       <div class="sec-title">Location</div>
@@ -4110,6 +4122,14 @@ function getChemicalMatches(q, limit=12){
 function chemicalSafe(v){
   return String(v||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 }
+// Number formatter for chemical survey dose values (rounded, thousands-separated).
+// NOTE: intentionally local to this section — do not rely on the loss-analysis
+// module's `fmt()`, which is scoped inside its own IIFE and not global.
+function fmtChemDose(v,d){
+  if(v==null||v===''||isNaN(v)) return '—';
+  const p = Math.pow(10, d==null?1:d);
+  return (Math.round(Number(v)*p)/p).toLocaleString('en-US');
+}
 // ══════════════════════════════════════════
 //  CHEMICAL SURVEY — parse / Firestore / display helpers
 // ══════════════════════════════════════════
@@ -4298,8 +4318,8 @@ function _setChemSurveyAdminStatus(text){
 
 /** Render one chemical injection detail card for the well-focus view. */
 function chemSurveyCard(r){
-  const fD = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmt(n,0)+' L/D'; };
-  const fV = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmt(n,0)+' L'; };
+  const fD = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmtChemDose(n,0)+' L/D'; };
+  const fV = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmtChemDose(n,0)+' L'; };
   let effBadge='';
   if(r.recDose&&r.actDose&&parseFloat(r.recDose)>0){
     const pct=Math.round(parseFloat(r.actDose)/parseFloat(r.recDose)*100);
@@ -4481,9 +4501,9 @@ function renderChemicalResult(key){
       if(CHEM_SURVEY && rec.surveyData){
         const sd = rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key);
         if(sd){
-          const actStr  = (sd.actDose  !=null&&sd.actDose  !=='') ? fmt(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
-          const recStr  = (sd.recDose  !=null&&sd.recDose  !=='') ? fmt(parseFloat(sd.recDose)||0,0)+' L/D' : '—';
-          const skidStr = (sd.skidLevel!=null&&sd.skidLevel!=='') ? fmt(parseFloat(sd.skidLevel)||0,0)+' L'  : '—';
+          const actStr  = (sd.actDose  !=null&&sd.actDose  !=='') ? fmtChemDose(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
+          const recStr  = (sd.recDose  !=null&&sd.recDose  !=='') ? fmtChemDose(parseFloat(sd.recDose)||0,0)+' L/D' : '—';
+          const skidStr = (sd.skidLevel!=null&&sd.skidLevel!=='') ? fmtChemDose(parseFloat(sd.skidLevel)||0,0)+' L'  : '—';
           const pumpStr = sd.pumpStatus ? ' · ⚙ '+escHtml(sd.pumpStatus) : '';
           doseRow = `<div class="chem-well-survey-row">Act: <strong>${actStr}</strong> · Rec: ${recStr} · Skid: ${skidStr}${pumpStr}</div>`;
         }
