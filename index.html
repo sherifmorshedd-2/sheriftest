@@ -992,6 +992,28 @@ body.light-mode .chem-card{
 body.light-mode .chem-pill{border-color:rgba(7,94,84,.25) !important;background:rgba(7,94,84,.07) !important;}
 body.light-mode .chem-pill.active{box-shadow:0 0 0 1px rgba(7,94,84,.12) inset !important;}
 body.light-mode .chem-well:active{background:rgba(7,94,84,.06) !important;}
+/* ── Chemical Survey Cards (daily injection detail) ── */
+.chem-survey-banner{
+  background:rgba(0,200,240,.07);border:1px solid rgba(0,200,240,.18);
+  border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);line-height:1.6;
+}
+.chem-survey-card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;margin-bottom:10px;
+}
+.chem-survey-type{font-size:14px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.chem-survey-brand{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+.chem-survey-field{font-size:12px;color:var(--text);margin-top:4px;font-family:'JetBrains Mono',monospace;}
+.chem-survey-doses{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0;}
+.chem-dose-item{text-align:center;background:var(--surface);border-radius:6px;padding:6px 4px;}
+.chem-dose-val{font-size:14px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;}
+.chem-dose-lbl{font-size:10px;color:var(--muted);margin-top:2px;}
+.chem-survey-remark{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4;font-style:italic;}
+.chem-well-survey-row{
+  font-size:11px;color:var(--muted);margin-top:6px;padding:5px 8px;
+  background:var(--surface);border-radius:6px;font-family:'JetBrains Mono',monospace;line-height:1.5;
+}
+body.light-mode .chem-survey-banner{background:rgba(7,94,84,.07) !important;border-color:rgba(7,94,84,.18) !important;}
 
 /* ── T.B. Production page ── */
 body.light-mode .tb-date-pill{background:rgba(7,94,84,.10) !important;border-color:rgba(7,94,84,.25) !important;}
@@ -1528,6 +1550,23 @@ body.light-mode .install-banner{
     <input type="file" id="dispFileInput" class="file-input" accept=".xlsx,.xls">
     <div id="dispAdminStatus" style="display:none;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;line-height:1.7;"></div>
 
+
+    <!-- ── Chemical Injection Survey upload (admin) ── -->
+    <div class="update-intro" style="margin-top:18px;">
+      <h3>🧪 Chemical Injection Survey</h3>
+      <p>Upload the daily <strong>H2S_Scavenger_Demulsifier_Daily_Survey.xlsx</strong>. All 10 chemical sheets are parsed automatically — doses, skid levels, and pump status per well are synced to every device. Diesel stays sourced from the main well database.</p>
+      <ul>
+        <li>Last sync: <strong style="color:var(--text)" id="chem-survey-cloud-when">—</strong></li>
+        <li>Report date: <strong style="color:var(--text)" id="chem-survey-report-date">—</strong></li>
+      </ul>
+    </div>
+    <div class="upload-zone" id="chemSurveyUploadZone" onclick="document.getElementById('chemSurveyFileInput').click()">
+      <div class="uz-icon">🧪</div>
+      <p><strong>Tap to choose chemical survey Excel file</strong></p>
+      <p>H2S_Scavenger_Demulsifier_Daily_Survey.xlsx</p>
+    </div>
+    <input type="file" id="chemSurveyFileInput" class="file-input" accept=".xlsx,.xls">
+    <div id="chemSurveyAdminStatus" style="display:none;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;line-height:1.7;"></div>
 
     <!-- ── Comparison / Baseline Snapshot upload (admin) ── -->
     <div class="update-intro" style="margin-top:18px;">
@@ -2125,6 +2164,7 @@ function startFirestoreListener() {
   try { startWCHistoryListener(); } catch(e){ console.warn('wc listener', e); }
   try { startDisposalListener(); } catch(e){ console.warn('disposal listener', e); }
   try { if(typeof startSnapshotsListener==='function') startSnapshotsListener(); } catch(e){ console.warn('snapshots listener', e); }
+  try { if(typeof startChemSurveyListener==='function') startChemSurveyListener(); } catch(e){ console.warn('chem survey listener', e); }
   _firestoreUnsub = db.collection('wells').doc('landWells')
     .onSnapshot(function(doc) {
       if (doc.exists) {
@@ -3908,6 +3948,7 @@ const chemicalSuggEl = document.getElementById('chemicalSuggestions');
 let currentChemicalName = '';
 let currentChemicalWellFilter = '';
 let currentChemicalFocusedWell = '';
+let CHEM_SURVEY = null; // {wellsMap, facilityLines, reportDate} — loaded from daily survey upload
 
 function getChemicalValue(w){
   const keys = ['CHEMICAL', 'CHEMICAL ', 'Chemical', 'Chemical '];
@@ -3971,12 +4012,47 @@ function isExcludedChemicalWell(w){
   return status.includes('waiting work over') || status.includes('work over') || status.includes('rig') || shut.includes('rig') || type.includes('rig');
 }
 function getChemicalRecords(){
-  return WELLS
-    .map(w=>{
+  if(CHEM_SURVEY && Object.keys(CHEM_SURVEY.wellsMap).length > 0){
+    // Build fast case-insensitive lookup of WELLS by name
+    const wellsByNameLC = {};
+    WELLS.forEach(function(w){
+      const n = String(w['Well']||'').trim().toLowerCase();
+      if(n) wellsByNameLC[n] = w;
+    });
+    const surveyWellKeysLC = new Set(
+      Object.keys(CHEM_SURVEY.wellsMap).map(function(n){ return n.trim().toLowerCase(); })
+    );
+    const records = [];
+    // Primary: survey-based records
+    Object.entries(CHEM_SURVEY.wellsMap).forEach(function([wellName, chemRecs]){
+      const wellObj = wellsByNameLC[wellName.trim().toLowerCase()] || {'Well': wellName.trim()};
+      // Expand composite chemTypes like "Demulsifier & Xylene" into both
+      const chemicals = Array.from(new Set(
+        chemRecs.flatMap(function(r){ return splitChemicalTokens(r.chemType).map(canonicalChemicalName); })
+      ));
+      // Also carry Diesel if WELLS has it for this well
+      const dieselFromDB = splitChemicalTokens(getChemicalValue(wellObj))
+        .filter(function(c){ return normalizeChemicalName(c)==='diesel'; });
+      dieselFromDB.forEach(function(d){ if(!chemicals.includes(d)) chemicals.push(d); });
+      records.push({well:wellObj, raw:chemicals.join(' + '), chemicals:chemicals, surveyData:chemRecs});
+    });
+    // Also include Diesel-only wells from WELLS that are absent from the survey
+    WELLS.forEach(function(w){
+      const n = String(w['Well']||'').trim().toLowerCase();
+      if(!n || surveyWellKeysLC.has(n)) return;
       const raw = getChemicalValue(w);
-      const chemicals = splitChemicalTokens(raw);
-      return { well:w, raw, chemicals };
-    }).filter(rec=>rec.chemicals.length);
+      const chems = splitChemicalTokens(raw).filter(function(c){ return normalizeChemicalName(c)==='diesel'; });
+      if(chems.length) records.push({well:w, raw:raw, chemicals:chems});
+    });
+    return records.filter(function(r){ return r.chemicals.length; })
+      .sort(function(a,b){ return String(a.well['Well']||'').localeCompare(String(b.well['Well']||''),undefined,{numeric:true,sensitivity:'base'}); });
+  }
+  // ── Fallback: original WELLS Chemical-column logic ──
+  return WELLS.map(function(w){
+    const raw = getChemicalValue(w);
+    const chemicals = splitChemicalTokens(raw);
+    return { well:w, raw, chemicals };
+  }).filter(function(rec){ return rec.chemicals.length; });
 }
 
 function getChemicalWellMatches(q, limit=12){
@@ -4035,6 +4111,220 @@ function chemicalSafe(v){
   return String(v||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 }
 // ══════════════════════════════════════════
+//  CHEMICAL SURVEY — parse / Firestore / display helpers
+// ══════════════════════════════════════════
+const CHEM_SURVEY_META_COL = 'chemSurveyMeta';
+const CHEM_SURVEY_DATA_COL = 'chemSurvey';
+let _chemSurveyMetaUnsub = null;
+let _lastChemSurveyTs = 0;
+let _skipNextChemSurveySnap = false;
+
+function parseChemSurveyWorkbook(wb){
+  const SHEET_CHEM_MAP = {
+    'h2s scavenger':        'H2S Scavenger',
+    'demulsifier':          'Demulsifier',
+    'demuls.&xylene(50 50)':'Demulsifier & Xylene',
+    'xylene':               'Xylene',
+    'corrosion inhibitor':  'Corrosion Inhibitor',
+    'scale inhi':           'Scale Inhibitor',
+    'acetic acid':          'Acetic Acid',
+    'antifoulant':          'Antifoulant',
+    'oxygen scavenger':     'Oxygen Scavenger',
+    'biocide':              'Biocide'
+  };
+  const FACILITY_LABELS = new Set(['Oxygen Scavenger','Biocide']);
+  const wellsMap = {}, facilityLines = [];
+  let reportDate = '';
+
+  wb.SheetNames.forEach(function(sheetName){
+    const chemType   = SHEET_CHEM_MAP[sheetName.trim().toLowerCase()] || sheetName.trim();
+    const isFacility = FACILITY_LABELS.has(chemType);
+    const ws = wb.Sheets[sheetName];
+    if(!ws) return;
+    const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+    // Date from col 0 of first 20 rows
+    for(let i=0; i<Math.min(20,data.length); i++){
+      const cell = String(data[i][0]||'').trim();
+      const m = cell.match(/date[:\s]+(.+)/i);
+      if(m && !reportDate){ const ds=m[1].trim(); if(ds.length>3) reportDate=ds; break; }
+    }
+
+    // Find header row (has both 'ser' and 'injection point')
+    let hdrRow = -1;
+    for(let i=0; i<data.length; i++){
+      const rs = data[i].map(c=>String(c||'').toLowerCase()).join('|');
+      if(rs.includes('ser') && rs.includes('injection point')){ hdrRow=i; break; }
+    }
+    if(hdrRow < 0) return;
+
+    const hdr = data[hdrRow].map(c=>String(c||'').toLowerCase().replace(/\s+/g,' ').trim());
+    const ci  = function(keywords){ for(let j=0;j<hdr.length;j++){ if(keywords.some(kw=>hdr[j].includes(kw))) return j; } return -1; };
+
+    const cSer    = ci(['ser.','ser']);
+    const cPoint  = ci(['injection point']);
+    const cLoc    = ci(['location']);
+    const cRec    = ci(['recommended dose','recommended']);
+    const cAct    = ci(['actual dose','actual']);
+    const cBrand  = ci(['chemical type']);
+    const cPtType = (function(){ for(let j=0;j<hdr.length;j++){ if(j===cBrand) continue; if(hdr[j].includes('injcetion point type')||hdr[j].includes('injection point type')) return j; } return -1; })();
+    const cSkid   = ci(['skid level','skid']);
+    const cStock  = ci(['stock']);
+    const cRemark = ci(['remark']);
+    const cPump   = ci(['pump status']);
+    const cH2SA   = ci(['h2s concentration after','h2s conc. after']);
+    const cH2SB   = ci(['h2s conc. before','h2s concentration before']);
+
+    for(let i=hdrRow+1; i<data.length; i++){
+      const row = data[i];
+      const ser = cSer>=0 ? row[cSer] : null;
+      if(typeof ser !== 'number' || ser < 1) continue;
+      const point = cPoint>=0 ? String(row[cPoint]||'').trim() : '';
+      if(!point) continue;
+
+      const rec = {
+        chemType : chemType,
+        location : cLoc   >=0 ? String(row[cLoc]||'').trim()   : '',
+        recDose  : cRec   >=0 ? row[cRec]                      : null,
+        actDose  : cAct   >=0 ? row[cAct]                      : null,
+        brand    : cBrand >=0 ? String(row[cBrand]||'').trim() : '',
+        pointType: cPtType>=0 ? String(row[cPtType]||'').trim(): '',
+        skidLevel: cSkid  >=0 ? row[cSkid]                     : null,
+        stock    : cStock >=0 ? row[cStock]                    : null,
+        remarks  : cRemark>=0 ? String(row[cRemark]||'').trim(): '',
+        pumpStatus: cPump >=0 ? String(row[cPump]||'').trim()  : ''
+      };
+      if(cH2SA>=0 && row[cH2SA]!=='') rec.h2sAfter  = row[cH2SA];
+      if(cH2SB>=0 && row[cH2SB]!=='') rec.h2sBefore = String(row[cH2SB]||'').trim();
+
+      if(isFacility){ facilityLines.push(Object.assign({point}, rec)); }
+      else { if(!wellsMap[point]) wellsMap[point]=[]; wellsMap[point].push(rec); }
+    }
+  });
+  return { wellsMap, facilityLines, reportDate };
+}
+
+async function saveChemSurveyToFirestore(surveyData){
+  if(typeof db === 'undefined') throw new Error('Firestore not initialised');
+  const upBy = (typeof currentUser!=='undefined'&&currentUser) ? currentUser.name : 'admin';
+  await db.collection(CHEM_SURVEY_DATA_COL).doc('latest').set({
+    wells: surveyData.wellsMap, facilityLines: surveyData.facilityLines,
+    reportDate: surveyData.reportDate,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: upBy
+  });
+  _skipNextChemSurveySnap = true;
+  await db.collection(CHEM_SURVEY_META_COL).doc('info').set({
+    reportDate: surveyData.reportDate,
+    wellCount: Object.keys(surveyData.wellsMap).length,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: upBy
+  });
+}
+
+function startChemSurveyListener(){
+  if(_chemSurveyMetaUnsub) _chemSurveyMetaUnsub();
+  _chemSurveyMetaUnsub = db.collection(CHEM_SURVEY_META_COL).doc('info')
+    .onSnapshot(function(snap){
+      if(!snap.exists) return;
+      if(_skipNextChemSurveySnap){ _skipNextChemSurveySnap=false; return; }
+      const ts = snap.data().updatedAt;
+      const tsMs = ts ? ts.toMillis() : 0;
+      if(tsMs <= _lastChemSurveyTs && CHEM_SURVEY) return;
+      _lastChemSurveyTs = tsMs;
+      db.collection(CHEM_SURVEY_DATA_COL).doc('latest').get().then(function(doc){
+        if(!doc.exists) return;
+        const d = doc.data();
+        CHEM_SURVEY = { wellsMap:d.wells||{}, facilityLines:d.facilityLines||[], reportDate:d.reportDate||'', updatedBy:d.updatedBy||'' };
+        _updateChemSurveyMetaUI();
+        showToast('🧪 Chemical survey updated — '+(CHEM_SURVEY.reportDate||'new data'));
+        var cp = document.getElementById('page-chemical');
+        if(cp && cp.style.display!=='none') renderChemicalLanding();
+      });
+    }, function(err){ console.warn('[ChemSurvey] listener error:',err.code); });
+
+  // File input handler
+  const fi = document.getElementById('chemSurveyFileInput');
+  if(fi) fi.addEventListener('change', async function(){
+    const file = this.files[0]; if(!file) return;
+    const zone = document.getElementById('chemSurveyUploadZone');
+    _setChemSurveyAdminStatus('⏳ Reading file…');
+    if(zone) zone.innerHTML='<div class="uz-icon">⏳</div><p><strong>Processing…</strong></p><p>'+escHtml(file.name)+'</p>';
+    const reader = new FileReader();
+    reader.onload = async function(e){
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        _setChemSurveyAdminStatus('⚙️ Parsing '+wb.SheetNames.length+' chemical sheets…');
+        const surveyData = parseChemSurveyWorkbook(wb);
+        const wc = Object.keys(surveyData.wellsMap).length;
+        let status = '✅ Parsed '+wc+' wells across '+wb.SheetNames.length+' sheets.\n';
+        status += '📅 Report date: '+(surveyData.reportDate||'not found')+'\n';
+        status += '🏭 Facility lines: '+surveyData.facilityLines.length+'\n';
+        // Apply locally right away
+        CHEM_SURVEY = { wellsMap:surveyData.wellsMap, facilityLines:surveyData.facilityLines,
+          reportDate:surveyData.reportDate,
+          updatedBy:(typeof currentUser!=='undefined'&&currentUser)?currentUser.name:'admin' };
+        _updateChemSurveyMetaUI();
+        var cp = document.getElementById('page-chemical');
+        if(cp && cp.style.display!=='none') renderChemicalLanding();
+        // Push to cloud
+        _setChemSurveyAdminStatus(status+'☁️ Uploading to cloud…');
+        await saveChemSurveyToFirestore(surveyData);
+        _setChemSurveyAdminStatus(status+'☁️ Cloud sync complete — pushed to all devices.');
+        if(zone) zone.innerHTML='<div class="uz-icon">✅</div><p><strong>Chemical survey uploaded</strong></p><p>'+escHtml(file.name)+'</p>';
+        showToast('🧪 Chemical survey synced — '+wc+' wells');
+      } catch(err){
+        console.error(err);
+        _setChemSurveyAdminStatus('❌ Error: '+err.message);
+        if(zone) zone.innerHTML='<div class="uz-icon">🧪</div><p><strong>Tap to choose chemical survey Excel file</strong></p><p>H2S_Scavenger_Demulsifier_Daily_Survey.xlsx</p>';
+        showToast('❌ Chemical survey error: '+err.message,true);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    this.value='';
+  });
+}
+
+function _updateChemSurveyMetaUI(){
+  if(!CHEM_SURVEY) return;
+  const whenEl = document.getElementById('chem-survey-cloud-when');
+  const dateEl = document.getElementById('chem-survey-report-date');
+  if(whenEl) whenEl.textContent = CHEM_SURVEY.updatedBy ? 'By '+CHEM_SURVEY.updatedBy : '—';
+  if(dateEl) dateEl.textContent = CHEM_SURVEY.reportDate || '—';
+}
+function _setChemSurveyAdminStatus(text){
+  const el = document.getElementById('chemSurveyAdminStatus');
+  if(!el) return;
+  el.style.display='block'; el.textContent=text;
+}
+
+/** Render one chemical injection detail card for the well-focus view. */
+function chemSurveyCard(r){
+  const fD = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmt(n,0)+' L/D'; };
+  const fV = function(v){ if(v==null||v==='') return '—'; const n=parseFloat(v); return isNaN(n)?String(v):fmt(n,0)+' L'; };
+  let effBadge='';
+  if(r.recDose&&r.actDose&&parseFloat(r.recDose)>0){
+    const pct=Math.round(parseFloat(r.actDose)/parseFloat(r.recDose)*100);
+    const cls=pct>=90?'producer':pct>=60?'waiting':'loss-badge';
+    effBadge=`<span class="badge ${cls}" style="font-size:10px;padding:2px 6px;">${pct}%</span>`;
+  }
+  const pumpOff = r.pumpStatus&&(r.pumpStatus.toLowerCase().includes('stop')||r.pumpStatus.toLowerCase().includes('fault')||r.pumpStatus.toLowerCase().includes(' off'));
+  const pumpColor = pumpOff ? 'var(--red)' : 'var(--green)';
+  return `<div class="chem-survey-card">
+    <div class="chem-survey-type">${escHtml(r.chemType)} ${effBadge}</div>
+    ${r.brand    ?`<div class="chem-survey-brand">Brand: ${escHtml(r.brand)}</div>`:''}
+    ${r.pointType?`<div class="chem-survey-field">Inj. Type: ${escHtml(r.pointType)}</div>`:''}
+    <div class="chem-survey-doses">
+      <div class="chem-dose-item"><div class="chem-dose-val">${escHtml(fD(r.actDose))}</div><div class="chem-dose-lbl">Actual</div></div>
+      <div class="chem-dose-item"><div class="chem-dose-val" style="color:var(--muted)">${escHtml(fD(r.recDose))}</div><div class="chem-dose-lbl">Recommended</div></div>
+      <div class="chem-dose-item"><div class="chem-dose-val" style="color:var(--muted)">${escHtml(fV(r.skidLevel))}</div><div class="chem-dose-lbl">Skid Level</div></div>
+    </div>
+    ${r.h2sAfter !=null?`<div class="chem-survey-field">H₂S After Inj.: <strong>${escHtml(String(r.h2sAfter))}</strong> ppm</div>`:''}
+    ${r.h2sBefore?`<div class="chem-survey-field">H₂S Before: ${escHtml(String(r.h2sBefore))}</div>`:''}
+    ${r.remarks  ?`<div class="chem-survey-remark">📝 ${escHtml(r.remarks)}</div>`:''}
+    ${r.pumpStatus?`<div class="chem-survey-field" style="color:${pumpColor}">⚙ Pump: ${escHtml(r.pumpStatus)}</div>`:''}
+  </div>`;
+}
+
+// ══════════════════════════════════════════
 //  CHEMICAL PAGE — helpers, search, filter, render
 // ══════════════════════════════════════════
 function renderChemicalSuggestions(matches,q){
@@ -4070,6 +4360,7 @@ function renderChemicalLanding(){
         <div class="badge other">Chemical-first dashboard</div>
       </div>
     </div>
+    ${CHEM_SURVEY && CHEM_SURVEY.reportDate ? `<div style="padding:0 14px 8px;"><div class="chem-survey-banner">🧪 Chemical Survey Active — Report Date: <strong>${escHtml(CHEM_SURVEY.reportDate)}</strong>${CHEM_SURVEY.updatedBy ? ' · Uploaded by '+escHtml(CHEM_SURVEY.updatedBy) : ''}</div></div>` : ''}
     <div class="section">
       <div class="sec-title">Chemical Types</div>
       <div style="padding:12px 14px;">
@@ -4117,6 +4408,11 @@ function renderChemicalWellFocus(wellName){
       </div>
       <div class="substation-note" style="margin-top:8px;">Manifold: <strong style="color:var(--text)">${escHtml(getManifoldValue(w)||'—')}</strong> • Status: <strong style="color:${DOT[sc(w['Status'])]}">${escHtml(w['Status']||'—')}</strong></div>
     </div>
+    ${(CHEM_SURVEY && rec.surveyData && rec.surveyData.length) ? `
+    <div class="section">
+      <div class="sec-title">💉 Injection Details <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">${escHtml(CHEM_SURVEY.reportDate||'')}</span></div>
+      <div style="padding:12px 14px;">${rec.surveyData.map(chemSurveyCard).join('')}</div>
+    </div>` : ''}
     <div class="section">
       <div class="sec-title">Injected Chemicals</div>
       <div style="padding:12px 14px;">
@@ -4180,6 +4476,18 @@ function renderChemicalResult(key){
         const active = normalizeChemicalName(token)===key ? 'active' : '';
         return `<span class="chem-pill ${active}">${escHtml(token)}</span>`;
       }).join('');
+      // Survey dose row — show actual/recommended/skid for this specific chemical type
+      let doseRow = '';
+      if(CHEM_SURVEY && rec.surveyData){
+        const sd = rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key);
+        if(sd){
+          const actStr  = (sd.actDose  !=null&&sd.actDose  !=='') ? fmt(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
+          const recStr  = (sd.recDose  !=null&&sd.recDose  !=='') ? fmt(parseFloat(sd.recDose)||0,0)+' L/D' : '—';
+          const skidStr = (sd.skidLevel!=null&&sd.skidLevel!=='') ? fmt(parseFloat(sd.skidLevel)||0,0)+' L'  : '—';
+          const pumpStr = sd.pumpStatus ? ' · ⚙ '+escHtml(sd.pumpStatus) : '';
+          doseRow = `<div class="chem-well-survey-row">Act: <strong>${actStr}</strong> · Rec: ${recStr} · Skid: ${skidStr}${pumpStr}</div>`;
+        }
+      }
       return `<div class="chem-well" data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;">
         <div class="chem-well-top">
           <div>
@@ -4192,6 +4500,7 @@ function renderChemicalResult(key){
           </div>
         </div>
         <div class="chem-pill-row">${pills}</div>
+        ${doseRow}
       </div>`;
     }).join('');
   }
@@ -7858,8 +8167,8 @@ function initMorningReport() {
 
   // ── Balance tab: combined losses + gains list with net result footer ──
   function balanceHTML(rows){
-    const lossRows=rows.filter(function(r){ return r.netLoss>=ANL_MIN; }).slice().sort(function(a,b){ return b.netLoss-a.netLoss; });
-    const gainRows=rows.filter(function(r){ return r.netLoss<=-ANL_MIN; }).slice().sort(function(a,b){ return a.netLoss-b.netLoss; });
+    const lossRows=rows.filter(function(r){ return r.netLoss>0; }).slice().sort(function(a,b){ return b.netLoss-a.netLoss; });
+    const gainRows=rows.filter(function(r){ return r.netLoss<0; }).slice().sort(function(a,b){ return a.netLoss-b.netLoss; });
     const totalLost  =lossRows.reduce(function(s,r){ return s+r.netLoss; },0);
     const totalGained=gainRows.reduce(function(s,r){ return s+(-r.netLoss); },0);
     const netM3 =totalGained-totalLost;
