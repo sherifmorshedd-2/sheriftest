@@ -1014,6 +1014,27 @@ body.light-mode .chem-well:active{background:rgba(7,94,84,.06) !important;}
   background:var(--surface);border-radius:6px;font-family:'JetBrains Mono',monospace;line-height:1.5;
 }
 body.light-mode .chem-survey-banner{background:rgba(7,94,84,.07) !important;border-color:rgba(7,94,84,.18) !important;}
+/* ── Chemical Consumption Dashboard ── */
+.chem-cons-section{margin:0 14px 12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.chem-cons-header{background:var(--surface);padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+.chem-cons-title{font-size:13px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;letter-spacing:.3px;}
+.chem-cons-date{font-size:10px;color:var(--muted);}
+.chem-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);}
+.chem-kpi-box{background:var(--card);padding:10px 8px;text-align:center;}
+.chem-kpi-val{font-size:17px;font-weight:800;color:var(--text);font-family:'JetBrains Mono',monospace;line-height:1.15;}
+.chem-kpi-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:3px;}
+.chem-cons-tbl{width:100%;border-collapse:collapse;font-size:11px;}
+.chem-cons-tbl th{background:var(--surface);color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-size:9px;padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+.chem-cons-tbl th:first-child{text-align:left;}
+.chem-cons-tbl td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right;}
+.chem-cons-tbl td:first-child{text-align:left;color:var(--text);font-family:inherit;font-size:12px;}
+.chem-cons-tbl tr.chem-total-row td{border-bottom:none;font-weight:700;background:var(--surface);border-top:1px solid var(--border);}
+.chem-days-ok{color:var(--green);font-weight:700;}
+.chem-days-warn{color:#f59e0b;font-weight:700;}
+.chem-days-crit{color:var(--red);font-weight:700;}
+.chem-inj-type-bar{padding:7px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);line-height:1.6;}
+body.light-mode .chem-cons-section{border-color:rgba(7,94,84,.2) !important;}
+body.light-mode .chem-cons-header{background:rgba(7,94,84,.05) !important;}
 
 /* ── T.B. Production page ── */
 body.light-mode .tb-date-pill{background:rgba(7,94,84,.10) !important;border-color:rgba(7,94,84,.25) !important;}
@@ -3233,12 +3254,6 @@ function renderWell(well, source='lookup'){
       })()}
     </div>
 
-    ${chemSurveyEntries.length ? `
-    <div class="section">
-      <div class="sec-title">💉 Chemical Injection Details <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">${escHtml((typeof CHEM_SURVEY!=='undefined'&&CHEM_SURVEY&&CHEM_SURVEY.reportDate)||'')}</span></div>
-      <div style="padding:12px 14px;">${chemSurveyEntries.map(chemSurveyCard).join('')}</div>
-    </div>` : ''}
-
     <div class="section">
       <div class="sec-title">Location</div>
       ${fld('Manifold', manifold)}
@@ -3257,6 +3272,12 @@ function renderWell(well, source='lookup'){
       ${fld('Actual Net (m³/d)', actNet, {grn:true, roundWhole:true})}
 
     </div>
+
+    ${chemSurveyEntries.length ? `
+    <div class="section">
+      <div class="sec-title">💉 Chemical Injection Details <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">${escHtml((typeof CHEM_SURVEY!=='undefined'&&CHEM_SURVEY&&CHEM_SURVEY.reportDate)||'')}</span></div>
+      <div style="padding:12px 14px;">${chemSurveyEntries.map(chemSurveyCard).join('')}</div>
+    </div>` : ''}
 
     <div class="section">
       <div class="sec-title">Pump Data</div>
@@ -4023,37 +4044,50 @@ function isExcludedChemicalWell(w){
   const type = String(w['Type'] || '').toLowerCase();
   return status.includes('waiting work over') || status.includes('work over') || status.includes('rig') || shut.includes('rig') || type.includes('rig');
 }
+/**
+ * Normalize a well name for matching: strip forward-slashes, collapse spaces,
+ * lowercase. This makes "A/RM-37" == "ARM-37" and "A/RS-13" == "ARS-13".
+ */
+function normWellKey(name){
+  return String(name||'').replace(/\//g,'').replace(/\s+/g,' ').trim().toLowerCase();
+}
+
 function getChemicalRecords(){
   if(CHEM_SURVEY && Object.keys(CHEM_SURVEY.wellsMap).length > 0){
-    // Build fast case-insensitive lookup of WELLS by name
-    const wellsByNameLC = {};
+    // Build lookup keyed by NORMALIZED well name (slashes stripped) so that
+    // "A/RM-37" (WELLS DB) matches "ARM-37" (survey sheet).
+    const wellsByNormKey = {};
     WELLS.forEach(function(w){
-      const n = String(w['Well']||'').trim().toLowerCase();
-      if(n) wellsByNameLC[n] = w;
+      const n = normWellKey(w['Well']||'');
+      if(n) wellsByNormKey[n] = w;
     });
-    const surveyWellKeysLC = new Set(
-      Object.keys(CHEM_SURVEY.wellsMap).map(function(n){ return n.trim().toLowerCase(); })
+    // Survey key set also uses normalized keys for the diesel-exclusion check.
+    const surveyNormKeys = new Set(
+      Object.keys(CHEM_SURVEY.wellsMap).map(function(n){ return normWellKey(n); })
     );
     const records = [];
     // Primary: survey-based records
     Object.entries(CHEM_SURVEY.wellsMap).forEach(function([wellName, chemRecs]){
-      const wellObj = wellsByNameLC[wellName.trim().toLowerCase()] || {'Well': wellName.trim()};
+      // Match survey name → WELLS object (slash-insensitive). Fall back to a
+      // minimal stub so the well still appears even if it's not in WELLS yet.
+      const wellObj = wellsByNormKey[normWellKey(wellName)] || {'Well': wellName.trim()};
       // Expand composite chemTypes like "Demulsifier & Xylene" into both
       const chemicals = Array.from(new Set(
         chemRecs.flatMap(function(r){ return splitChemicalTokens(r.chemType).map(canonicalChemicalName); })
       ));
-      // Also carry Diesel if WELLS has it for this well
+      // Also carry Diesel if the matched WELLS entry has it
       const dieselFromDB = splitChemicalTokens(getChemicalValue(wellObj))
         .filter(function(c){ return normalizeChemicalName(c)==='diesel'; });
       dieselFromDB.forEach(function(d){ if(!chemicals.includes(d)) chemicals.push(d); });
       records.push({well:wellObj, raw:chemicals.join(' + '), chemicals:chemicals, surveyData:chemRecs});
     });
-    // Also include Diesel-only wells from WELLS that are absent from the survey
+    // Include ALL wells from WELLS that are absent from the survey (Water, Diesel, etc.)
+    // Water injection wells are not in the survey file, so they must come from here.
     WELLS.forEach(function(w){
-      const n = String(w['Well']||'').trim().toLowerCase();
-      if(!n || surveyWellKeysLC.has(n)) return;
+      const n = normWellKey(w['Well']||'');
+      if(!n || surveyNormKeys.has(n)) return;
       const raw = getChemicalValue(w);
-      const chems = splitChemicalTokens(raw).filter(function(c){ return normalizeChemicalName(c)==='diesel'; });
+      const chems = splitChemicalTokens(raw);
       if(chems.length) records.push({well:w, raw:raw, chemicals:chems});
     });
     return records.filter(function(r){ return r.chemicals.length; })
@@ -4080,8 +4114,9 @@ function getChemicalWellMatches(q, limit=12){
   }).sort((a,b)=>String(a.well['Well']||'').localeCompare(String(b.well['Well']||''), undefined, {numeric:true, sensitivity:'base'})).slice(0,limit);
 }
 function getChemicalRecordByWell(name){
-  const q = String(name||'').trim().toLowerCase();
-  return getChemicalRecords().find(rec=>String(rec.well['Well']||'').trim().toLowerCase()===q) || null;
+  // Use normWellKey so "A/RM-37" and "ARM-37" resolve to the same record.
+  const q = normWellKey(name);
+  return getChemicalRecords().find(rec=>normWellKey(rec.well['Well'])===q) || null;
 }
 function getChemicalGroups(){
   const map = new Map();
@@ -4153,7 +4188,7 @@ function parseChemSurveyWorkbook(wb){
     'biocide':              'Biocide'
   };
   const FACILITY_LABELS = new Set(['Oxygen Scavenger','Biocide']);
-  const wellsMap = {}, facilityLines = [];
+  const wellsMap = {}, facilityLines = [], consumptionTables = [];
   let reportDate = '';
 
   wb.SheetNames.forEach(function(sheetName){
@@ -4220,8 +4255,51 @@ function parseChemSurveyWorkbook(wb){
       if(isFacility){ facilityLines.push(Object.assign({point}, rec)); }
       else { if(!wellsMap[point]) wellsMap[point]=[]; wellsMap[point].push(rec); }
     }
+    // ── Consumption section detection ─────────────────────────
+    let consData = null;
+    for(let i = hdrRow + 1; i < data.length && !consData; i++){
+      const rowStr = data[i].map(c=>String(c||'').toLowerCase()).join('|');
+      if(rowStr.includes('consumption by station')){
+        // H2S-style: station table — Ser | Plant | Consumption (L/D) | Stock (L)
+        const stations = []; let totalCons=null, totalStock=null;
+        for(let j=i+1; j<data.length; j++){
+          const r=data[j];
+          const rs=r.map(c=>String(c||'').toLowerCase()).join('|');
+          if(rs.includes('total consumption')){
+            totalCons  = parseFloat(r[7])||null;  // col H
+            totalStock = parseFloat(r[9])||null;  // col J
+            break;
+          }
+          const ser=r[5]; const plant=String(r[6]||'').trim();  // cols F, G
+          const cons=parseFloat(r[7]); const stock=parseFloat(r[9]);  // cols H, J
+          if(typeof ser==='number' && ser>=1 && plant)
+            stations.push({plant, consumption:isNaN(cons)?0:cons, stock:isNaN(stock)?0:stock});
+        }
+        consData = {style:'station', chemType, stations, totalConsumption:totalCons, totalStock};
+      } else if(rowStr.includes('consumption (l/d)') && rowStr.includes('location')){
+        // Demulsifier-style: area breakdown — Location | Total | Wells | T.Batteries | Manifolds
+        const areas = []; let totalCons=null, wellInj=null, tbInj=null, manInj=null;
+        for(let j=i+2; j<data.length; j++){  // skip sub-header row
+          const r=data[j];
+          const rs=r.map(c=>String(c||'').toLowerCase()).join('|');
+          const loc=String(r[2]||'').trim(); const val=parseFloat(r[3]);  // cols C, D
+          if(rs.includes('total consumption'))                              { if(!isNaN(val)) totalCons=val; }
+          else if(rs.includes('well injection'))                            { if(!isNaN(val)) wellInj=val;  }
+          else if(rs.includes('tank batt'))                                 { if(!isNaN(val)) tbInj=val;   }
+          else if(rs.includes('mainfold')||rs.includes('manifold'))         { if(!isNaN(val)) manInj=val;  }
+          else if(loc && !isNaN(val) && val>0)
+            areas.push({location:loc, total:val,
+              wells    :parseFloat(r[4])||0,  // col E
+              batteries:parseFloat(r[5])||0,  // col F
+              manifolds:parseFloat(r[6])||0   // col G
+            });
+        }
+        consData = {style:'area', chemType, areas, totalConsumption:totalCons, wellInjection:wellInj, batteryInjection:tbInj, manifoldInjection:manInj};
+      }
+    }
+    if(consData) consumptionTables.push(consData);
   });
-  return { wellsMap, facilityLines, reportDate };
+  return { wellsMap, facilityLines, reportDate, consumptionTables };
 }
 
 async function saveChemSurveyToFirestore(surveyData){
@@ -4229,6 +4307,7 @@ async function saveChemSurveyToFirestore(surveyData){
   const upBy = (typeof currentUser!=='undefined'&&currentUser) ? currentUser.name : 'admin';
   await db.collection(CHEM_SURVEY_DATA_COL).doc('latest').set({
     wells: surveyData.wellsMap, facilityLines: surveyData.facilityLines,
+    consumptionTables: surveyData.consumptionTables||[],
     reportDate: surveyData.reportDate,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: upBy
   });
@@ -4253,7 +4332,7 @@ function startChemSurveyListener(){
       db.collection(CHEM_SURVEY_DATA_COL).doc('latest').get().then(function(doc){
         if(!doc.exists) return;
         const d = doc.data();
-        CHEM_SURVEY = { wellsMap:d.wells||{}, facilityLines:d.facilityLines||[], reportDate:d.reportDate||'', updatedBy:d.updatedBy||'' };
+        CHEM_SURVEY = { wellsMap:d.wells||{}, facilityLines:d.facilityLines||[], consumptionTables:d.consumptionTables||[], reportDate:d.reportDate||'', updatedBy:d.updatedBy||'' };
         _updateChemSurveyMetaUI();
         showToast('🧪 Chemical survey updated — '+(CHEM_SURVEY.reportDate||'new data'));
         var cp = document.getElementById('page-chemical');
@@ -4280,6 +4359,7 @@ function startChemSurveyListener(){
         status += '🏭 Facility lines: '+surveyData.facilityLines.length+'\n';
         // Apply locally right away
         CHEM_SURVEY = { wellsMap:surveyData.wellsMap, facilityLines:surveyData.facilityLines,
+          consumptionTables:surveyData.consumptionTables||[],
           reportDate:surveyData.reportDate,
           updatedBy:(typeof currentUser!=='undefined'&&currentUser)?currentUser.name:'admin' };
         _updateChemSurveyMetaUI();
@@ -4363,6 +4443,102 @@ function renderChemicalSuggestions(matches,q){
   }).join('');
   chemicalSuggEl.classList.add('show');
 }
+function renderChemConsumptionDashboard(){
+  if(!CHEM_SURVEY || !CHEM_SURVEY.consumptionTables || !CHEM_SURVEY.consumptionTables.length) return '';
+  const fN = function(v){ if(v==null||isNaN(v)||v==='') return '—'; return Number(v).toLocaleString(); };
+  const dCls = function(d){ return(!d||!isFinite(d))?'': d<7?'chem-days-crit':d<14?'chem-days-warn':'chem-days-ok'; };
+  const dLbl = function(cons,stock){
+    if(!cons||cons<=0||stock==null) return '—';
+    const d=stock/cons; return d>365?'>1 yr':d.toFixed(1)+' d';
+  };
+  return CHEM_SURVEY.consumptionTables.map(function(ct){
+    if(ct.style==='station'){
+      // H2S-style: per-station consumption + stock + days-to-depletion
+      const totDays = ct.totalConsumption&&ct.totalStock ? ct.totalStock/ct.totalConsumption : null;
+      const tdc = dCls(totDays);
+      const stationRows = ct.stations.map(function(s){
+        const d = s.consumption>0 ? s.stock/s.consumption : null;
+        return `<tr>
+          <td>${escHtml(s.plant)}</td>
+          <td>${fN(s.consumption)}</td>
+          <td>${fN(s.stock)}</td>
+          <td class="${dCls(d)}">${dLbl(s.consumption,s.stock)}</td>
+        </tr>`;
+      }).join('');
+      return `<div class="chem-cons-section">
+        <div class="chem-cons-header">
+          <span class="chem-cons-title">📊 ${escHtml(ct.chemType)} — Consumption by Station</span>
+          <span class="chem-cons-date">${escHtml(CHEM_SURVEY.reportDate||'')}</span>
+        </div>
+        <div class="chem-kpi-row">
+          <div class="chem-kpi-box">
+            <div class="chem-kpi-val">${fN(ct.totalConsumption)} <span style="font-size:10px;font-weight:400;color:var(--muted)">L/D</span></div>
+            <div class="chem-kpi-lbl">Daily Consumption</div>
+          </div>
+          <div class="chem-kpi-box">
+            <div class="chem-kpi-val">${fN(ct.totalStock)} <span style="font-size:10px;font-weight:400;color:var(--muted)">L</span></div>
+            <div class="chem-kpi-lbl">Total Stock</div>
+          </div>
+          <div class="chem-kpi-box">
+            <div class="chem-kpi-val ${tdc}">${dLbl(ct.totalConsumption,ct.totalStock)}</div>
+            <div class="chem-kpi-lbl">Days Remaining</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto;"><table class="chem-cons-tbl">
+          <thead><tr>
+            <th>Station</th><th>Daily Use (L/D)</th><th>Stock (L)</th><th>Days Left</th>
+          </tr></thead>
+          <tbody>${stationRows}</tbody>
+          <tr class="chem-total-row">
+            <td>TOTAL</td><td>${fN(ct.totalConsumption)}</td>
+            <td>${fN(ct.totalStock)}</td>
+            <td class="${tdc}">${dLbl(ct.totalConsumption,ct.totalStock)}</td>
+          </tr>
+        </table></div>
+      </div>`;
+    } else {
+      // Demulsifier-style: area × injection-type matrix
+      const areaRows = ct.areas.map(function(a){
+        return `<tr>
+          <td>${escHtml(a.location)}</td>
+          <td>${fN(a.total)}</td>
+          <td>${fN(a.wells)}</td>
+          <td>${fN(a.batteries)}</td>
+          <td>${fN(a.manifolds)}</td>
+        </tr>`;
+      }).join('');
+      const typeBar = [
+        ct.wellInjection    !=null ? `Wells: <strong>${fN(ct.wellInjection)} L/D</strong>` : '',
+        ct.batteryInjection !=null ? `Tank Batteries: <strong>${fN(ct.batteryInjection)} L/D</strong>` : '',
+        ct.manifoldInjection!=null ? `Manifolds: <strong>${fN(ct.manifoldInjection)} L/D</strong>` : ''
+      ].filter(Boolean).join('&nbsp; · &nbsp;');
+      return `<div class="chem-cons-section">
+        <div class="chem-cons-header">
+          <span class="chem-cons-title">📊 ${escHtml(ct.chemType)} — Consumption by Area</span>
+          <span class="chem-cons-date">${escHtml(CHEM_SURVEY.reportDate||'')}</span>
+        </div>
+        <div class="chem-kpi-row">
+          <div class="chem-kpi-box" style="grid-column:1/-1;">
+            <div class="chem-kpi-val">${fN(ct.totalConsumption)} <span style="font-size:10px;font-weight:400;color:var(--muted)">L/D</span></div>
+            <div class="chem-kpi-lbl">Total Daily Consumption</div>
+          </div>
+        </div>
+        ${typeBar ? `<div class="chem-inj-type-bar">${typeBar}</div>` : ''}
+        <div style="overflow-x:auto;"><table class="chem-cons-tbl">
+          <thead><tr>
+            <th>Area</th><th>Total (L/D)</th><th>Wells</th><th>Tank Batt.</th><th>Manifolds</th>
+          </tr></thead>
+          <tbody>${areaRows}</tbody>
+          <tr class="chem-total-row">
+            <td>TOTAL</td><td>${fN(ct.totalConsumption)}</td>
+            <td>${fN(ct.wellInjection)}</td><td>${fN(ct.batteryInjection)}</td><td>${fN(ct.manifoldInjection)}</td>
+          </tr>
+        </table></div>
+      </div>`;
+    }
+  }).join('');
+}
+
 function renderChemicalLanding(){
   currentChemicalName = '';
   currentChemicalWellFilter = '';
@@ -4381,6 +4557,7 @@ function renderChemicalLanding(){
       </div>
     </div>
     ${CHEM_SURVEY && CHEM_SURVEY.reportDate ? `<div style="padding:0 14px 8px;"><div class="chem-survey-banner">🧪 Chemical Survey Active — Report Date: <strong>${escHtml(CHEM_SURVEY.reportDate)}</strong>${CHEM_SURVEY.updatedBy ? ' · Uploaded by '+escHtml(CHEM_SURVEY.updatedBy) : ''}</div></div>` : ''}
+    ${renderChemConsumptionDashboard()}
     <div class="section">
       <div class="sec-title">Chemical Types</div>
       <div style="padding:12px 14px;">
