@@ -1032,7 +1032,21 @@ body.light-mode .chem-survey-banner{background:rgba(7,94,84,.07) !important;bord
 .chem-days-ok{color:var(--green);font-weight:700;}
 .chem-days-warn{color:#f59e0b;font-weight:700;}
 .chem-days-crit{color:var(--red);font-weight:700;}
-.chem-inj-type-bar{padding:7px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);line-height:1.6;}
+.chem-inj-type-bar{padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border);}
+/* Color-coded frames: Wells / Tank Batteries / Manifolds each get their own
+   consistent color, reused across the chip bar, table headers and totals so
+   the same category always reads as the same color at a glance. */
+.chem-inj-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid;font-size:11px;line-height:1.4;background:var(--card);}
+.chem-inj-chip strong{font-family:'JetBrains Mono',monospace;}
+.chem-inj-chip-wells{border-color:var(--accent);color:var(--accent);background:rgba(34,211,238,.10);}
+.chem-inj-chip-batteries{border-color:var(--accent2);color:var(--accent2);background:rgba(245,158,11,.10);}
+.chem-inj-chip-manifolds{border-color:var(--green);color:var(--green);background:rgba(16,185,129,.10);}
+.chem-cons-tbl th.chem-col-wells{color:var(--accent);}
+.chem-cons-tbl th.chem-col-batteries{color:var(--accent2);}
+.chem-cons-tbl th.chem-col-manifolds{color:var(--green);}
+.chem-cons-tbl td.chem-col-wells{color:var(--accent);}
+.chem-cons-tbl td.chem-col-batteries{color:var(--accent2);}
+.chem-cons-tbl td.chem-col-manifolds{color:var(--green);}
 body.light-mode .chem-cons-section{border-color:rgba(7,94,84,.2) !important;}
 body.light-mode .chem-cons-header{background:rgba(7,94,84,.05) !important;}
 
@@ -2033,6 +2047,21 @@ function handleLogin() {
 function handleLogout() {
   if (!confirm('Sign out?')) return;
   auth.signOut();
+}
+
+// This makes the loading screen fade away — guaranteed removal.
+// Defined here (rather than further down the file) because the Firebase
+// auth listener below can fire showLogin()/hideLoadingScreen() before
+// later <script> blocks — e.g. after the xlsx/html2canvas library tags —
+// have finished loading, which previously threw
+// "hideLoadingScreen is not defined" on fast/cached auth resolutions.
+function hideLoadingScreen() {
+    var loader = document.getElementById('loading-screen');
+    if(!loader || loader.dataset.hidden) return;
+    loader.dataset.hidden = '1';
+    loader.style.transition = 'opacity 0.5s ease';
+    loader.style.opacity = '0';
+    setTimeout(function() { loader.style.display = 'none'; }, 550);
 }
 
 function showApp(user) {
@@ -4046,10 +4075,19 @@ function isExcludedChemicalWell(w){
 }
 /**
  * Normalize a well name for matching: strip forward-slashes, collapse spaces,
- * lowercase. This makes "A/RM-37" == "ARM-37" and "A/RS-13" == "ARS-13".
+ * lowercase, and strip leading zeros from numeric segments. This makes
+ * "A/RM-37" == "ARM-37", "A/RS-13" == "ARS-13", and "WF-02" == "WF-2" (a
+ * well can be typed with or without a leading zero across different Excel
+ * sources — e.g. the Chemical Injection Survey vs. the live well database —
+ * and both must resolve to the same well).
  */
 function normWellKey(name){
-  return String(name||'').replace(/\//g,'').replace(/\s+/g,' ').trim().toLowerCase();
+  return String(name||'')
+    .replace(/\//g,'')
+    .replace(/\s+/g,' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\d+/g, function(digits){ return String(parseInt(digits,10)); });
 }
 
 function getChemicalRecords(){
@@ -4502,16 +4540,16 @@ function renderChemConsumptionDashboard(){
         return `<tr>
           <td>${escHtml(a.location)}</td>
           <td>${fN(a.total)}</td>
-          <td>${fN(a.wells)}</td>
-          <td>${fN(a.batteries)}</td>
-          <td>${fN(a.manifolds)}</td>
+          <td class="chem-col-wells">${fN(a.wells)}</td>
+          <td class="chem-col-batteries">${fN(a.batteries)}</td>
+          <td class="chem-col-manifolds">${fN(a.manifolds)}</td>
         </tr>`;
       }).join('');
       const typeBar = [
-        ct.wellInjection    !=null ? `Wells: <strong>${fN(ct.wellInjection)} L/D</strong>` : '',
-        ct.batteryInjection !=null ? `Tank Batteries: <strong>${fN(ct.batteryInjection)} L/D</strong>` : '',
-        ct.manifoldInjection!=null ? `Manifolds: <strong>${fN(ct.manifoldInjection)} L/D</strong>` : ''
-      ].filter(Boolean).join('&nbsp; · &nbsp;');
+        ct.wellInjection    !=null ? `<span class="chem-inj-chip chem-inj-chip-wells">Wells: <strong>${fN(ct.wellInjection)} L/D</strong></span>` : '',
+        ct.batteryInjection !=null ? `<span class="chem-inj-chip chem-inj-chip-batteries">Tank Batteries: <strong>${fN(ct.batteryInjection)} L/D</strong></span>` : '',
+        ct.manifoldInjection!=null ? `<span class="chem-inj-chip chem-inj-chip-manifolds">Manifolds: <strong>${fN(ct.manifoldInjection)} L/D</strong></span>` : ''
+      ].filter(Boolean).join('');
       return `<div class="chem-cons-section">
         <div class="chem-cons-header">
           <span class="chem-cons-title">📊 ${escHtml(ct.chemType)} — Consumption by Area</span>
@@ -4526,12 +4564,12 @@ function renderChemConsumptionDashboard(){
         ${typeBar ? `<div class="chem-inj-type-bar">${typeBar}</div>` : ''}
         <div style="overflow-x:auto;"><table class="chem-cons-tbl">
           <thead><tr>
-            <th>Area</th><th>Total (L/D)</th><th>Wells</th><th>Tank Batt.</th><th>Manifolds</th>
+            <th>Area</th><th>Total (L/D)</th><th class="chem-col-wells">Wells</th><th class="chem-col-batteries">Tank Batt.</th><th class="chem-col-manifolds">Manifolds</th>
           </tr></thead>
           <tbody>${areaRows}</tbody>
           <tr class="chem-total-row">
             <td>TOTAL</td><td>${fN(ct.totalConsumption)}</td>
-            <td>${fN(ct.wellInjection)}</td><td>${fN(ct.batteryInjection)}</td><td>${fN(ct.manifoldInjection)}</td>
+            <td class="chem-col-wells">${fN(ct.wellInjection)}</td><td class="chem-col-batteries">${fN(ct.batteryInjection)}</td><td class="chem-col-manifolds">${fN(ct.manifoldInjection)}</td>
           </tr>
         </table></div>
       </div>`;
@@ -4663,42 +4701,32 @@ function renderChemicalResult(key){
     });
   }
 
+  // Consumption for this specific chemical type — from the uploaded survey's
+  // actual dose (L/D). Falls back to '—' when no survey data covers this well.
+  function chemConsumptionFor(rec){
+    if(!(CHEM_SURVEY && rec.surveyData)) return null;
+    const sd = rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key);
+    if(!sd || sd.actDose==null || sd.actDose==='') return null;
+    return parseFloat(sd.actDose)||0;
+  }
+
   function buildChemCards(recs){
-    if(!recs.length) return `<div class="chem-search-empty">No wells matched this search inside ${escHtml(group.name)}.</div>`;
+    if(!recs.length) return `<tr><td colspan="7" class="chem-search-empty" style="text-align:center;">No wells matched this search inside ${escHtml(group.name)}.</td></tr>`;
     return sortedRecords(recs).map(rec=>{
       const w = rec.well;
       const statusClass = sc(w['Status']);
       const isMixed = rec.chemicals.length > 1;
-      const pills = rec.chemicals.map(token=>{
-        const active = normalizeChemicalName(token)===key ? 'active' : '';
-        return `<span class="chem-pill ${active}">${escHtml(token)}</span>`;
-      }).join('');
-      // Survey dose row — show actual/recommended/skid for this specific chemical type
-      let doseRow = '';
-      if(CHEM_SURVEY && rec.surveyData){
-        const sd = rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key);
-        if(sd){
-          const actStr  = (sd.actDose  !=null&&sd.actDose  !=='') ? fmtChemDose(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
-          const recStr  = (sd.recDose  !=null&&sd.recDose  !=='') ? fmtChemDose(parseFloat(sd.recDose)||0,0)+' L/D' : '—';
-          const skidStr = (sd.skidLevel!=null&&sd.skidLevel!=='') ? fmtChemDose(parseFloat(sd.skidLevel)||0,0)+' L'  : '—';
-          const pumpStr = sd.pumpStatus ? ' · ⚙ '+escHtml(sd.pumpStatus) : '';
-          doseRow = `<div class="chem-well-survey-row">Act: <strong>${actStr}</strong> · Rec: ${recStr} · Skid: ${skidStr}${pumpStr}</div>`;
-        }
-      }
-      return `<div class="chem-well" data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;">
-        <div class="chem-well-top">
-          <div>
-            <div class="chem-well-name">${escHtml(w['Well']||'—')} <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">↗ Open</span></div>
-            <div class="chem-well-meta">TK ${escHtml(getBatteryValue(w)||'—')} • Manifold ${escHtml(getManifoldValue(w)||'—')} • <span style="color:${DOT[statusClass]}">${escHtml(w['Status']||'—')}</span></div>
-          </div>
-          <div class="badges" style="margin-top:0;">
-            <div class="badge ${isMixed ? 'waiting' : 'producer'}">${isMixed ? rec.chemicals.length + ' Chemicals' : 'Single Chemical'}</div>
-            <div class="badge other">${escHtml(getSubstationValue(w)||'No Substation')}</div>
-          </div>
-        </div>
-        <div class="chem-pill-row">${pills}</div>
-        ${doseRow}
-      </div>`;
+      const cons = chemConsumptionFor(rec);
+      const consStr = cons!=null ? fmtChemDose(cons,0)+' L/D' : '—';
+      return `<tr data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
+        <td class="well-link" style="color:var(--accent);font-weight:700;">${escHtml(w['Well']||'—')} <span style="font-size:9px;color:var(--muted);">↗</span></td>
+        <td>${escHtml(getBatteryValue(w)||'—')}</td>
+        <td>${escHtml(getManifoldValue(w)||'—')}</td>
+        <td class="status-cell" style="color:${DOT[statusClass]}">${escHtml(w['Status']||'—')}</td>
+        <td style="font-weight:700;color:var(--accent2);">${consStr}</td>
+        <td><span class="badge ${isMixed ? 'waiting' : 'producer'}" style="margin:0;">${isMixed ? rec.chemicals.length + ' Chem.' : 'Single'}</span></td>
+        <td><button class="substation-mini-btn" data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}">Enter</button></td>
+      </tr>`;
     }).join('');
   }
 
@@ -4715,8 +4743,8 @@ function renderChemicalResult(key){
       netBtn.style.borderColor = window._chemNetSort!=='none' ? 'var(--accent)' : 'var(--border)';
       netBtn.style.color       = window._chemNetSort!=='none' ? 'var(--accent)' : 'var(--text)';
     }
-    const container = document.getElementById('chemCardsContainer');
-    if(container) container.innerHTML = buildChemCards(filteredRecords);
+    const tbody = document.getElementById('chemTableBody');
+    if(tbody) tbody.innerHTML = buildChemCards(filteredRecords);
   };
 
   window.chemSort = function(field){
@@ -4759,8 +4787,23 @@ function renderChemicalResult(key){
         <button id="chemSortWc"  onclick="chemSort('wc')"  style="flex:1;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">W.C% ⇅</button>
         <button id="chemSortNet" onclick="chemSort('net')" style="flex:1;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">ACT NET ⇅</button>
       </div>
-      <div id="chemCardsContainer" style="padding:0 14px 12px;">
-        ${buildChemCards(filteredRecords)}
+      <div class="substation-table-wrap">
+        <table class="substation-table">
+          <thead>
+            <tr>
+              <th>WELL</th>
+              <th>TK BATTERY</th>
+              <th>MANIFOLD</th>
+              <th>STATUS</th>
+              <th>CONSUMPTION</th>
+              <th>CHEMICALS</th>
+              <th>ENTER</th>
+            </tr>
+          </thead>
+          <tbody id="chemTableBody">
+            ${buildChemCards(filteredRecords)}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
@@ -5792,15 +5835,8 @@ window.addEventListener('popstate', () => {
   history.replaceState({page:'app'}, '', '');
 });
 
-  // This makes the loading screen fade away — guaranteed removal
-function hideLoadingScreen() {
-    var loader = document.getElementById('loading-screen');
-    if(!loader || loader.dataset.hidden) return;
-    loader.dataset.hidden = '1';
-    loader.style.transition = 'opacity 0.5s ease';
-    loader.style.opacity = '0';
-    setTimeout(function() { loader.style.display = 'none'; }, 550);
-}
+  // hideLoadingScreen() is now defined earlier in the file (near handleLogout) —
+  // see the comment there for why it had to move.
 // Multiple triggers to guarantee the loading screen always disappears
 document.addEventListener('DOMContentLoaded', function() {
   // Auth onAuthStateChanged now controls hideLoadingScreen
