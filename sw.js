@@ -4,7 +4,7 @@
 //  requests are NEVER cached to prevent stale data.
 // ══════════════════════════════════════════
 
-const CACHE_NAME = 'land-wells-v86';
+const CACHE_NAME = 'land-wells-v88';
 
 // Only cache static files that don't change between sessions
 const STATIC_ASSETS = [

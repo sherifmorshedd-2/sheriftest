@@ -4104,15 +4104,23 @@ function renderChemLocationResult(){
     </div>`;
 }
 
-// Strip everything but letters/digits and lowercase, so "T.B. 10-1" and
-// "TB 10/1" both normalize to "tb101" for cross-sheet matching.
+// Words that show up in station/area labels and in TK Battery/Manifold/
+// Substation values but carry no matching signal on their own (e.g. "T.B."
+// is just short for "Tank Battery" — the *number* after it is what needs to
+// match). Stripping them first, rather than stripping all punctuation, lets
+// "T.B. 10-1" and the well database's raw TK Battery value "10/1" (which has
+// no "T.B." prefix at all) reduce to the same "101" token.
+const LOC_STOPWORDS = new Set(['t','b','tb','tk','tanks','tank','battery','batteries','manifold','manifolds','substation','substations','station','stations','sub','st','area','areas','loc','location','no','number','of','and','new','old']);
 function normalizeLocToken(s){
-  return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const words = String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).filter(w=>!LOC_STOPWORDS.has(w));
+  return words.join('');
 }
 // Consumption-dashboard area labels can be compound, e.g. "TB 10-1 & 2020" —
 // split on common separators so each piece can be matched independently.
+// Deliberately excludes "/" — battery numbers themselves are written like
+// "10/1", so splitting on it would break a single battery id into two tokens.
 function splitLocLabel(label){
-  return String(label||'').split(/\s*&\s*|\s*,\s*|\s*\/\s*|\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+  return String(label||'').split(/\s*&\s*|\s*,\s*|\s*;\s*|\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
 }
 // Best-effort lookup of wells behind a consumption-dashboard station/area row.
 // The survey's station/area names don't share a consistent format with the
@@ -4200,18 +4208,21 @@ function isExcludedChemicalWell(w){
   return status.includes('waiting work over') || status.includes('work over') || status.includes('rig') || shut.includes('rig') || type.includes('rig');
 }
 /**
- * Normalize a well name for matching: strip forward-slashes, collapse spaces,
- * lowercase, and strip leading zeros from numeric segments. This makes
- * "A/RM-37" == "ARM-37", "A/RS-13" == "ARS-13", and "WF-02" == "WF-2" (a
- * well can be typed with or without a leading zero across different Excel
- * sources — e.g. the Chemical Injection Survey vs. the live well database —
- * and both must resolve to the same well).
+ * Normalize a well name for matching: strip slashes (incl. backslash/fullwidth
+ * variants) and ALL whitespace entirely (not just collapse), normalize dash
+ * variants to a plain hyphen, lowercase, and strip leading zeros from numeric
+ * segments. This makes "A/RM-37" == "ARM-37", "A/RS-13" == "ARS-13",
+ * "A/ZSE-1" == "AZSE-1" == "A / ZSE - 1", and "WF-02" == "WF-2" (a well can
+ * be typed with a slash, extra spacing around separators, or without a
+ * leading zero across different Excel sources — e.g. the Chemical Injection
+ * Survey vs. the live well database — and all variants must resolve to the
+ * same well).
  */
 function normWellKey(name){
   return String(name||'')
-    .replace(/\//g,'')
-    .replace(/\s+/g,' ')
-    .trim()
+    .replace(/[\/\\／]+/g,'')
+    .replace(/\s+/g,'')
+    .replace(/[–—]/g,'-')
     .toLowerCase()
     .replace(/\d+/g, function(digits){ return String(parseInt(digits,10)); });
 }
