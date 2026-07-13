@@ -414,6 +414,7 @@ body::before{
 .substation-table{
   width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px;min-width:640px;
 }
+.chem-well-table{min-width:820px;}
 .substation-table th{
   background:var(--surface);color:var(--accent);padding:10px 8px;text-align:left;
   border-bottom:1px solid var(--border);font-size:10px;letter-spacing:.7px;white-space:nowrap;
@@ -2331,6 +2332,7 @@ function attachDelegatedClicks(container){
       case 'selectManifold':      selectManifold(key); break;
       case 'selectChemical':      selectChemical(key); break;
       case 'selectChemicalWell':  selectChemicalWell(key); break;
+      case 'viewChemLocation':    viewChemLocationWells(key, key2); break;
       case 'openFromSubstation':  openWellFromSubstation(key); break;
       case 'openFromManifold':    openWellFromManifold(key); break;
       case 'openFromOverlay':     openWellFromOverlay(key); break;
@@ -4010,6 +4012,130 @@ const chemicalSuggEl = document.getElementById('chemicalSuggestions');
 let currentChemicalName = '';
 let currentChemicalWellFilter = '';
 let currentChemicalFocusedWell = '';
+let currentChemLocationView = null; // {chemKey, chemName, label} — set when drilling into a consumption-dashboard station/area
+
+// Survey record for a given chemical key on this well — carries the actual
+// dose, injection point type, and brand. Null when no survey data covers
+// this well (e.g. Water/Diesel from the WELLS column).
+function chemSurveyDataForKey(rec, key){
+  if(!(CHEM_SURVEY && rec.surveyData)) return null;
+  return rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key) || null;
+}
+// Shared row template for the "wells injected with this chemical" tables —
+// used by both the chemical-group view and the consumption-dashboard
+// station/area drill-down view.
+function buildChemWellRow(rec, key){
+  const w = rec.well;
+  const statusClass = sc(w['Status']);
+  const isMixed = rec.chemicals.length > 1;
+  const sd = chemSurveyDataForKey(rec, key);
+  const quantStr = (sd && sd.actDose!=null && sd.actDose!=='') ? fmtChemDose(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
+  const pointStr = (sd && sd.pointType) ? sd.pointType : '—';
+  const brandStr = (sd && sd.brand) ? sd.brand : '—';
+  return `<tr data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
+    <td class="well-link" style="color:var(--accent);font-weight:700;">${escHtml(w['Well']||'—')} <span style="font-size:9px;color:var(--muted);">↗</span></td>
+    <td style="font-weight:700;color:var(--accent2);">${escHtml(quantStr)}</td>
+    <td>${escHtml(pointStr)}</td>
+    <td>${escHtml(brandStr)}</td>
+    <td>${escHtml(getBatteryValue(w)||'—')}</td>
+    <td>${escHtml(getManifoldValue(w)||'—')}</td>
+    <td class="status-cell" style="color:${DOT[statusClass]}">${escHtml(w['Status']||'—')}</td>
+    <td><span class="badge ${isMixed ? 'waiting' : 'producer'}" style="margin:0;">${isMixed ? rec.chemicals.length + ' Chem.' : 'Single'}</span></td>
+    <td><button class="substation-mini-btn" data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}">Enter</button></td>
+  </tr>`;
+}
+// Drill down from a consumption-dashboard station/area row into the list of
+// wells behind it for that chemical.
+function viewChemLocationWells(chemTypeRaw, locationLabel){
+  const chemKey = normalizeChemicalName(chemTypeRaw);
+  const group = getChemicalByKey(chemKey);
+  currentChemLocationView = { chemKey, chemName: group ? group.name : canonicalChemicalName(chemTypeRaw), label: locationLabel };
+  currentChemicalName = '';
+  currentChemicalWellFilter = '';
+  currentChemicalFocusedWell = '';
+  chemicalInput.value = '';
+  const clearBtn = document.getElementById('chemicalClearBtn');
+  if(clearBtn) clearBtn.style.display = 'none';
+  chemicalSuggEl.classList.remove('show');
+  renderChemLocationResult();
+}
+function renderChemLocationResult(){
+  const view = currentChemLocationView;
+  const resultEl = document.getElementById('chemicalResult');
+  if(!view){ renderChemicalLanding(); return; }
+  const records = getWellsForChemLocation(view.chemKey, view.label);
+  const rowsHtml = records.length
+    ? records.map(rec=>buildChemWellRow(rec, view.chemKey)).join('')
+    : `<tr><td colspan="9" class="chem-search-empty" style="text-align:center;">No wells matched to "${escHtml(view.label)}" by TK Battery, Manifold, or Substation.</td></tr>`;
+  resultEl.innerHTML = `
+    <div class="substation-summary">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div class="substation-name">${escHtml(view.label)}</div>
+          <div class="substation-note" style="margin-top:4px;">${escHtml(view.chemName)} — wells linked to this consumption entry (matched by TK Battery / Manifold / Substation name).</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;"><button class="nav-back-btn" onclick="backToChemicalLanding()">← Back</button></div>
+      </div>
+      <div class="substation-meta">
+        <div class="badge live">${records.length} Well${records.length===1?'':'s'}</div>
+        <div class="badge other">${escHtml(view.chemName)}</div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="sec-title">${escHtml(view.chemName)} @ ${escHtml(view.label)}</div>
+      <div class="substation-table-wrap">
+        <table class="substation-table chem-well-table">
+          <thead>
+            <tr>
+              <th>WELL</th>
+              <th>QUANTITY</th>
+              <th>INJ. POINT</th>
+              <th>BRAND</th>
+              <th>TK BATTERY</th>
+              <th>MANIFOLD</th>
+              <th>STATUS</th>
+              <th>CHEMICALS</th>
+              <th>ENTER</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// Strip everything but letters/digits and lowercase, so "T.B. 10-1" and
+// "TB 10/1" both normalize to "tb101" for cross-sheet matching.
+function normalizeLocToken(s){
+  return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+// Consumption-dashboard area labels can be compound, e.g. "TB 10-1 & 2020" —
+// split on common separators so each piece can be matched independently.
+function splitLocLabel(label){
+  return String(label||'').split(/\s*&\s*|\s*,\s*|\s*\/\s*|\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+}
+// Best-effort lookup of wells behind a consumption-dashboard station/area row.
+// The survey's station/area names don't share a consistent format with the
+// WELLS database's TK Battery/Manifold/Substation fields (punctuation and
+// spacing vary), so we match on normalized substrings across all three
+// location fields rather than requiring an exact key.
+function getWellsForChemLocation(chemKey, locationLabel){
+  const rawTokens = splitLocLabel(locationLabel).map(normalizeLocToken).filter(Boolean);
+  const tokens = (rawTokens.length ? rawTokens : [normalizeLocToken(locationLabel)]).filter(t=>t.length>=2);
+  if(!tokens.length) return [];
+  return getChemicalRecords().filter(rec=>{
+    const hasChem = rec.chemicals.some(c=>normalizeChemicalName(c)===chemKey);
+    if(!hasChem) return false;
+    const battery    = normalizeLocToken(getBatteryValue(rec.well));
+    const manifold   = normalizeLocToken(getManifoldValue(rec.well));
+    const substation = normalizeLocToken(getSubstationValue(rec.well));
+    return tokens.some(t=>
+      (battery && battery.includes(t)) ||
+      (manifold && manifold.includes(t)) ||
+      (substation && substation.includes(t))
+    );
+  }).sort((a,b)=>String(a.well['Well']||'').localeCompare(String(b.well['Well']||''), undefined, {numeric:true, sensitivity:'base'}));
+}
 let CHEM_SURVEY = null; // {wellsMap, facilityLines, reportDate} — loaded from daily survey upload
 
 function getChemicalValue(w){
@@ -4496,8 +4622,8 @@ function renderChemConsumptionDashboard(){
       const tdc = dCls(totDays);
       const stationRows = ct.stations.map(function(s){
         const d = s.consumption>0 ? s.stock/s.consumption : null;
-        return `<tr>
-          <td>${escHtml(s.plant)}</td>
+        return `<tr data-action="viewChemLocation" data-key="${escAttr(ct.chemType)}" data-key2="${escAttr(s.plant)}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
+          <td style="color:var(--accent);font-weight:700;">${escHtml(s.plant)} <span style="font-size:9px;color:var(--muted);">↗</span></td>
           <td>${fN(s.consumption)}</td>
           <td>${fN(s.stock)}</td>
           <td class="${dCls(d)}">${dLbl(s.consumption,s.stock)}</td>
@@ -4537,8 +4663,8 @@ function renderChemConsumptionDashboard(){
     } else {
       // Demulsifier-style: area × injection-type matrix
       const areaRows = ct.areas.map(function(a){
-        return `<tr>
-          <td>${escHtml(a.location)}</td>
+        return `<tr data-action="viewChemLocation" data-key="${escAttr(ct.chemType)}" data-key2="${escAttr(a.location)}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
+          <td style="color:var(--accent);font-weight:700;">${escHtml(a.location)} <span style="font-size:9px;color:var(--muted);">↗</span></td>
           <td>${fN(a.total)}</td>
           <td class="chem-col-wells">${fN(a.wells)}</td>
           <td class="chem-col-batteries">${fN(a.batteries)}</td>
@@ -4669,13 +4795,25 @@ function renderChemicalResult(key){
   const mixedCount = group.records.length - singleCount;
   const pairText = group.pairSummary.slice(0,3).map(([name,count])=>`${escHtml(name)} (${count})`).join(' • ');
   const filter = currentChemicalWellFilter.trim().toLowerCase();
+  // Match against every column actually shown in the table below (well,
+  // quantity, injection point, brand, TK battery, manifold, status,
+  // chemicals), not just well/battery/manifold/substation.
   const filteredRecords = filter
     ? group.records.filter(rec => {
-        const wellName = String(rec.well['Well']||'').toLowerCase();
-        const battery = String(getBatteryValue(rec.well)||'').toLowerCase();
-        const manifold = String(getManifoldValue(rec.well)||'').toLowerCase();
-        const substation = String(getSubstationValue(rec.well)||'').toLowerCase();
-        return wellName.includes(filter) || battery.includes(filter) || manifold.includes(filter) || substation.includes(filter);
+        const w = rec.well;
+        const wellName = String(w['Well']||'').toLowerCase();
+        const battery = String(getBatteryValue(w)||'').toLowerCase();
+        const manifold = String(getManifoldValue(w)||'').toLowerCase();
+        const substation = String(getSubstationValue(w)||'').toLowerCase();
+        const status = String(w['Status']||'').toLowerCase();
+        const sd = chemSurveyDataForKey(rec, key);
+        const brand = String((sd && sd.brand) || '').toLowerCase();
+        const point = String((sd && sd.pointType) || '').toLowerCase();
+        const quantity = (sd && sd.actDose!=null && sd.actDose!=='') ? String(fmtChemDose(parseFloat(sd.actDose)||0,0)) : '';
+        const chemLabel = (rec.chemicals.length > 1 ? `${rec.chemicals.length} chem.` : 'single');
+        return wellName.includes(filter) || battery.includes(filter) || manifold.includes(filter) ||
+               substation.includes(filter) || status.includes(filter) || brand.includes(filter) ||
+               point.includes(filter) || quantity.includes(filter) || chemLabel.includes(filter);
       })
     : group.records;
 
@@ -4701,33 +4839,9 @@ function renderChemicalResult(key){
     });
   }
 
-  // Consumption for this specific chemical type — from the uploaded survey's
-  // actual dose (L/D). Falls back to '—' when no survey data covers this well.
-  function chemConsumptionFor(rec){
-    if(!(CHEM_SURVEY && rec.surveyData)) return null;
-    const sd = rec.surveyData.find(r => normalizeChemicalName(r.chemType)===key);
-    if(!sd || sd.actDose==null || sd.actDose==='') return null;
-    return parseFloat(sd.actDose)||0;
-  }
-
   function buildChemCards(recs){
-    if(!recs.length) return `<tr><td colspan="7" class="chem-search-empty" style="text-align:center;">No wells matched this search inside ${escHtml(group.name)}.</td></tr>`;
-    return sortedRecords(recs).map(rec=>{
-      const w = rec.well;
-      const statusClass = sc(w['Status']);
-      const isMixed = rec.chemicals.length > 1;
-      const cons = chemConsumptionFor(rec);
-      const consStr = cons!=null ? fmtChemDose(cons,0)+' L/D' : '—';
-      return `<tr data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
-        <td class="well-link" style="color:var(--accent);font-weight:700;">${escHtml(w['Well']||'—')} <span style="font-size:9px;color:var(--muted);">↗</span></td>
-        <td>${escHtml(getBatteryValue(w)||'—')}</td>
-        <td>${escHtml(getManifoldValue(w)||'—')}</td>
-        <td class="status-cell" style="color:${DOT[statusClass]}">${escHtml(w['Status']||'—')}</td>
-        <td style="font-weight:700;color:var(--accent2);">${consStr}</td>
-        <td><span class="badge ${isMixed ? 'waiting' : 'producer'}" style="margin:0;">${isMixed ? rec.chemicals.length + ' Chem.' : 'Single'}</span></td>
-        <td><button class="substation-mini-btn" data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}">Enter</button></td>
-      </tr>`;
-    }).join('');
+    if(!recs.length) return `<tr><td colspan="9" class="chem-search-empty" style="text-align:center;">No wells matched this search inside ${escHtml(group.name)}.</td></tr>`;
+    return sortedRecords(recs).map(rec=>buildChemWellRow(rec, key)).join('');
   }
 
   window._chemSortAndRender = function(){
@@ -4788,14 +4902,16 @@ function renderChemicalResult(key){
         <button id="chemSortNet" onclick="chemSort('net')" style="flex:1;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">ACT NET ⇅</button>
       </div>
       <div class="substation-table-wrap">
-        <table class="substation-table">
+        <table class="substation-table chem-well-table">
           <thead>
             <tr>
               <th>WELL</th>
+              <th>QUANTITY</th>
+              <th>INJ. POINT</th>
+              <th>BRAND</th>
               <th>TK BATTERY</th>
               <th>MANIFOLD</th>
               <th>STATUS</th>
-              <th>CONSUMPTION</th>
               <th>CHEMICALS</th>
               <th>ENTER</th>
             </tr>
@@ -4880,6 +4996,7 @@ function clearChemicalSearch(){
   currentChemicalName = '';
   currentChemicalWellFilter = '';
   currentChemicalFocusedWell = '';
+  currentChemLocationView = null;
   chemicalInput.value = '';
   document.getElementById('chemicalClearBtn').style.display = 'none';
   chemicalSuggEl.classList.remove('show');
@@ -4889,6 +5006,7 @@ function backToChemicalLanding(){
   currentChemicalName = '';
   currentChemicalWellFilter = '';
   currentChemicalFocusedWell = '';
+  currentChemLocationView = null;
   chemicalInput.value = '';
   document.getElementById('chemicalClearBtn').style.display = 'none';
   chemicalSuggEl.classList.remove('show');
@@ -5801,7 +5919,7 @@ window.addEventListener('popstate', () => {
   }
 
   // ── 7. Chemical with a detail/focus open ──
-  if (pgId === 'chemical' && (currentChemicalFocusedWell || currentChemicalName)) {
+  if (pgId === 'chemical' && (currentChemicalFocusedWell || currentChemicalName || currentChemLocationView)) {
     history.pushState({page:'app'}, '', '');
     backToChemicalLanding();
     return;
@@ -5854,13 +5972,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if(!el) return;
     const action = el.dataset.action;
     if(!action) return;
-    const key = el.dataset.key || '';
+    const key  = el.dataset.key  || '';
+    const key2 = el.dataset.key2 || '';
     switch(action){
       case 'selectSubstation':    selectSubstation(key); break;
       case 'selectManifoldBat':   selectManifoldBattery(key); break;
       case 'selectManifold':      selectManifold(key); break;
       case 'selectChemical':      selectChemical(key); break;
       case 'selectChemicalWell':  selectChemicalWell(key); break;
+      case 'viewChemLocation':    viewChemLocationWells(key, key2); break;
       case 'openFromSubstation':  e.stopPropagation(); openWellFromSubstation(key); break;
       case 'openFromManifold':    e.stopPropagation(); openWellFromManifold(key); break;
       case 'openFromOverlay':     openWellFromOverlay(key); break;
