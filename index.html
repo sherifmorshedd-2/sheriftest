@@ -414,7 +414,7 @@ body::before{
 .substation-table{
   width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px;min-width:640px;
 }
-.chem-well-table{min-width:820px;}
+.chem-well-table{min-width:1020px;}
 .substation-table th{
   background:var(--surface);color:var(--accent);padding:10px 8px;text-align:left;
   border-bottom:1px solid var(--border);font-size:10px;letter-spacing:.7px;white-space:nowrap;
@@ -4032,11 +4032,15 @@ function buildChemWellRow(rec, key){
   const quantStr = (sd && sd.actDose!=null && sd.actDose!=='') ? fmtChemDose(parseFloat(sd.actDose)||0,0)+' L/D' : '—';
   const pointStr = (sd && sd.pointType) ? sd.pointType : '—';
   const brandStr = (sd && sd.brand) ? sd.brand : '—';
+  const actNet = getWellValue(w, ['ACT NET', 'ACT NET ', 'ACT. NET', 'ACT NET M3/D']);
+  const wc = currentWcForWell(w);
   return `<tr data-action="goToWellFromChem" data-key="${escAttr(w['Well']||'')}" style="cursor:pointer;" onmouseover="this.style.background='rgba(0,200,240,.06)'" onmouseout="this.style.background=''">
     <td class="well-link" style="color:var(--accent);font-weight:700;">${escHtml(w['Well']||'—')} <span style="font-size:9px;color:var(--muted);">↗</span></td>
     <td style="font-weight:700;color:var(--accent2);">${escHtml(quantStr)}</td>
     <td>${escHtml(pointStr)}</td>
     <td>${escHtml(brandStr)}</td>
+    <td>${escHtml(roundToNearestWholeDisplay(actNet)||'—')}</td>
+    <td>${escHtml(fn(wc)||'—')}</td>
     <td>${escHtml(getBatteryValue(w)||'—')}</td>
     <td>${escHtml(getManifoldValue(w)||'—')}</td>
     <td class="status-cell" style="color:${DOT[statusClass]}">${escHtml(w['Status']||'—')}</td>
@@ -4066,7 +4070,7 @@ function renderChemLocationResult(){
   const records = getWellsForChemLocation(view.chemKey, view.label);
   const rowsHtml = records.length
     ? records.map(rec=>buildChemWellRow(rec, view.chemKey)).join('')
-    : `<tr><td colspan="9" class="chem-search-empty" style="text-align:center;">No wells matched to "${escHtml(view.label)}" by TK Battery, Manifold, or Substation.</td></tr>`;
+    : `<tr><td colspan="11" class="chem-search-empty" style="text-align:center;">No wells matched to "${escHtml(view.label)}" by TK Battery, Manifold, or Substation.</td></tr>`;
   resultEl.innerHTML = `
     <div class="substation-summary">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -4091,6 +4095,8 @@ function renderChemLocationResult(){
               <th>QUANTITY</th>
               <th>INJ. POINT</th>
               <th>BRAND</th>
+              <th>ACT NET</th>
+              <th>W.C.</th>
               <th>TK BATTERY</th>
               <th>MANIFOLD</th>
               <th>STATUS</th>
@@ -4208,22 +4214,21 @@ function isExcludedChemicalWell(w){
   return status.includes('waiting work over') || status.includes('work over') || status.includes('rig') || shut.includes('rig') || type.includes('rig');
 }
 /**
- * Normalize a well name for matching: strip slashes (incl. backslash/fullwidth
- * variants) and ALL whitespace entirely (not just collapse), normalize dash
- * variants to a plain hyphen, lowercase, and strip leading zeros from numeric
- * segments. This makes "A/RM-37" == "ARM-37", "A/RS-13" == "ARS-13",
- * "A/ZSE-1" == "AZSE-1" == "A / ZSE - 1", and "WF-02" == "WF-2" (a well can
- * be typed with a slash, extra spacing around separators, or without a
- * leading zero across different Excel sources — e.g. the Chemical Injection
- * Survey vs. the live well database — and all variants must resolve to the
- * same well).
+ * Normalize a well name for matching: lowercase, strip EVERY separator
+ * character (slash, backslash, hyphen, dash variants, spaces, dots, etc. —
+ * anything that isn't a letter or digit), then strip leading zeros from the
+ * remaining numeric run(s). Different Excel sources punctuate the same well
+ * inconsistently — e.g. the live well database may use "A/ZSE-1" (slash)
+ * while the Chemical Injection Survey uses "A-ZSE-1" (hyphen) or "AZSE-1"
+ * (nothing) for the exact same well — so the separator character itself
+ * cannot be trusted and must be discarded entirely rather than normalized
+ * to one specific character. This makes "A/ZSE-1" == "A-ZSE-1" == "AZSE-1",
+ * "A/RM-37" == "ARM-37", and "WF-02" == "WF-2" all resolve to the same key.
  */
 function normWellKey(name){
   return String(name||'')
-    .replace(/[\/\\／]+/g,'')
-    .replace(/\s+/g,'')
-    .replace(/[–—]/g,'-')
     .toLowerCase()
+    .replace(/[^a-z0-9]+/g,'')
     .replace(/\d+/g, function(digits){ return String(parseInt(digits,10)); });
 }
 
@@ -4828,18 +4833,44 @@ function renderChemicalResult(key){
       })
     : group.records;
 
-  // Sort state
-  window._chemWcSort  = window._chemWcSort  || 'none';
-  window._chemNetSort = window._chemNetSort || 'none';
+  // Total consumption for this chemical — summed from each well's actual
+  // dose (survey "QUANTITY" column), so it works uniformly for every
+  // chemical tab regardless of whether the source sheet also has its own
+  // "Consumption Dashboard" table (which today only exists for H2S/Demulsifier).
+  const totalConsumption = group.records.reduce((sum, rec) => {
+    const sd = chemSurveyDataForKey(rec, key);
+    const v = (sd && sd.actDose!=null && sd.actDose!=='') ? parseFloat(sd.actDose) : NaN;
+    return sum + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  // Sort state — Injection Point, Brand, T.B. (Tank Battery), Net
+  window._chemPointSort = window._chemPointSort || 'none';
+  window._chemBrandSort = window._chemBrandSort || 'none';
+  window._chemTbSort    = window._chemTbSort    || 'none';
+  window._chemNetSort   = window._chemNetSort   || 'none';
   const cycle = s => s==='none'?'desc':s==='desc'?'asc':'none';
   const arr = {none:'⇅', desc:'↓', asc:'↑'};
 
   function sortedRecords(recs){
-    if(window._chemWcSort==='none' && window._chemNetSort==='none') return recs;
+    if(window._chemPointSort==='none' && window._chemBrandSort==='none' && window._chemTbSort==='none' && window._chemNetSort==='none') return recs;
     return [...recs].sort((a,b)=>{
-      if(window._chemWcSort!=='none'){
-        const av=safeNum(currentWcForWell(a.well),0), bv=safeNum(currentWcForWell(b.well),0);
-        if(av!==bv) return window._chemWcSort==='asc' ? av-bv : bv-av;
+      if(window._chemPointSort!=='none'){
+        const av = String((chemSurveyDataForKey(a,key)||{}).pointType||'').toLowerCase();
+        const bv = String((chemSurveyDataForKey(b,key)||{}).pointType||'').toLowerCase();
+        const cmp = av.localeCompare(bv, undefined, {numeric:true, sensitivity:'base'});
+        if(cmp!==0) return window._chemPointSort==='asc' ? cmp : -cmp;
+      }
+      if(window._chemBrandSort!=='none'){
+        const av = String((chemSurveyDataForKey(a,key)||{}).brand||'').toLowerCase();
+        const bv = String((chemSurveyDataForKey(b,key)||{}).brand||'').toLowerCase();
+        const cmp = av.localeCompare(bv, undefined, {numeric:true, sensitivity:'base'});
+        if(cmp!==0) return window._chemBrandSort==='asc' ? cmp : -cmp;
+      }
+      if(window._chemTbSort!=='none'){
+        const av = String(getBatteryValue(a.well)||'').toLowerCase();
+        const bv = String(getBatteryValue(b.well)||'').toLowerCase();
+        const cmp = av.localeCompare(bv, undefined, {numeric:true, sensitivity:'base'});
+        if(cmp!==0) return window._chemTbSort==='asc' ? cmp : -cmp;
       }
       if(window._chemNetSort!=='none'){
         const av=safeNum(getWellValue(a.well,['ACT NET','ACT NET ','ACT. NET']),0);
@@ -4851,20 +4882,32 @@ function renderChemicalResult(key){
   }
 
   function buildChemCards(recs){
-    if(!recs.length) return `<tr><td colspan="9" class="chem-search-empty" style="text-align:center;">No wells matched this search inside ${escHtml(group.name)}.</td></tr>`;
+    if(!recs.length) return `<tr><td colspan="11" class="chem-search-empty" style="text-align:center;">No wells matched this search inside ${escHtml(group.name)}.</td></tr>`;
     return sortedRecords(recs).map(rec=>buildChemWellRow(rec, key)).join('');
   }
 
   window._chemSortAndRender = function(){
-    const wcBtn  = document.getElementById('chemSortWc');
-    const netBtn = document.getElementById('chemSortNet');
-    if(wcBtn){
-      wcBtn.textContent = `W.C% ${arr[window._chemWcSort]}`;
-      wcBtn.style.borderColor = window._chemWcSort!=='none' ? 'var(--accent)' : 'var(--border)';
-      wcBtn.style.color       = window._chemWcSort!=='none' ? 'var(--accent)' : 'var(--text)';
+    const pointBtn = document.getElementById('chemSortPoint');
+    const brandBtn = document.getElementById('chemSortBrand');
+    const tbBtn    = document.getElementById('chemSortTb');
+    const netBtn   = document.getElementById('chemSortNet');
+    if(pointBtn){
+      pointBtn.textContent = `INJ. POINT ${arr[window._chemPointSort]}`;
+      pointBtn.style.borderColor = window._chemPointSort!=='none' ? 'var(--accent)' : 'var(--border)';
+      pointBtn.style.color       = window._chemPointSort!=='none' ? 'var(--accent)' : 'var(--text)';
+    }
+    if(brandBtn){
+      brandBtn.textContent = `BRAND ${arr[window._chemBrandSort]}`;
+      brandBtn.style.borderColor = window._chemBrandSort!=='none' ? 'var(--accent)' : 'var(--border)';
+      brandBtn.style.color       = window._chemBrandSort!=='none' ? 'var(--accent)' : 'var(--text)';
+    }
+    if(tbBtn){
+      tbBtn.textContent = `T.B. ${arr[window._chemTbSort]}`;
+      tbBtn.style.borderColor = window._chemTbSort!=='none' ? 'var(--accent)' : 'var(--border)';
+      tbBtn.style.color       = window._chemTbSort!=='none' ? 'var(--accent)' : 'var(--text)';
     }
     if(netBtn){
-      netBtn.textContent = `ACT NET ${arr[window._chemNetSort]}`;
+      netBtn.textContent = `NET ${arr[window._chemNetSort]}`;
       netBtn.style.borderColor = window._chemNetSort!=='none' ? 'var(--accent)' : 'var(--border)';
       netBtn.style.color       = window._chemNetSort!=='none' ? 'var(--accent)' : 'var(--text)';
     }
@@ -4873,8 +4916,10 @@ function renderChemicalResult(key){
   };
 
   window.chemSort = function(field){
-    if(field==='wc')  window._chemWcSort  = cycle(window._chemWcSort);
-    else              window._chemNetSort = cycle(window._chemNetSort);
+    if(field==='point')      window._chemPointSort = cycle(window._chemPointSort);
+    else if(field==='brand') window._chemBrandSort = cycle(window._chemBrandSort);
+    else if(field==='tb')    window._chemTbSort    = cycle(window._chemTbSort);
+    else                     window._chemNetSort   = cycle(window._chemNetSort);
     window._chemSortAndRender();
   };
 
@@ -4885,6 +4930,10 @@ function renderChemicalResult(key){
           <div class="substation-note" style="margin-top:4px;">Open wells below to review which ones are injected with only this chemical and which ones are injected with multiple chemicals.</div>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="nav-back-btn" onclick="backToChemicalLanding()">← Back</button></div>
+      <div class="chem-cons-kpi" style="margin-top:10px;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Total Consumption</div>
+        <div style="font-size:20px;font-weight:800;color:var(--accent2);">${numEn(Math.round(totalConsumption))} <span style="font-size:11px;font-weight:400;color:var(--muted);">L/D</span></div>
+      </div>
       <div class="substation-meta">
         <div class="badge live">${group.records.length} Wells</div>
         <div class="badge producer">${group.records.filter(r=>sc(r.well['Status'])==='producer').length} Producing</div>
@@ -4907,10 +4956,12 @@ function renderChemicalResult(key){
           </div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap;">
         <span style="font-size:11px;color:var(--muted);flex-shrink:0">Sort:</span>
-        <button id="chemSortWc"  onclick="chemSort('wc')"  style="flex:1;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">W.C% ⇅</button>
-        <button id="chemSortNet" onclick="chemSort('net')" style="flex:1;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">ACT NET ⇅</button>
+        <button id="chemSortPoint" onclick="chemSort('point')" style="flex:1;min-width:80px;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">INJ. POINT ⇅</button>
+        <button id="chemSortBrand" onclick="chemSort('brand')" style="flex:1;min-width:80px;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">BRAND ⇅</button>
+        <button id="chemSortTb"    onclick="chemSort('tb')"    style="flex:1;min-width:80px;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">T.B. ⇅</button>
+        <button id="chemSortNet"   onclick="chemSort('net')"   style="flex:1;min-width:80px;padding:6px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;">NET ⇅</button>
       </div>
       <div class="substation-table-wrap">
         <table class="substation-table chem-well-table">
@@ -4920,6 +4971,8 @@ function renderChemicalResult(key){
               <th>QUANTITY</th>
               <th>INJ. POINT</th>
               <th>BRAND</th>
+              <th>ACT NET</th>
+              <th>W.C.</th>
               <th>TK BATTERY</th>
               <th>MANIFOLD</th>
               <th>STATUS</th>
@@ -4948,8 +5001,10 @@ function renderChemicalResult(key){
     });
   }
   // Reset sort state when opening a new chemical group
-  window._chemWcSort  = 'none';
-  window._chemNetSort = 'none';
+  window._chemPointSort = 'none';
+  window._chemBrandSort = 'none';
+  window._chemTbSort    = 'none';
+  window._chemNetSort   = 'none';
 }
 function selectChemical(key){
   const group = getChemicalByKey(key);
